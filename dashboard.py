@@ -234,4 +234,4 @@ def change_kpis_graph(indic, datastore):
 
 # %%
 if __name__ == '__main__':
-    app.run_server(debug=False, use_reloader=False, port=8051)
+    app.run_server(debug=False, use_reloader=False, port=8053)
