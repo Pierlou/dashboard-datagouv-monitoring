@@ -225,7 +225,11 @@ def change_kpis_graph(indic, datastore):
         title=indic
     )
     fig.update_layout(
-        xaxis_title='Mois',
+        xaxis=dict(
+            title='Mois',
+            tickformat="%b %y",
+            dtick="M1"
+        ),
         yaxis_title=f"Valeur ({restr['unite_mesure'].unique()[0]})",
         yaxis_range=[0, max(restr['valeur'])*1.1]
     )
