@@ -124,8 +124,8 @@ app.layout = dbc.Container(
                             dcc.Download(id="support:download_stats")
                         ])
                     ]),
-                    dcc.Graph(id="support:graph_volumes"),
                     dcc.Graph(id="support:graph_taux"),
+                    dcc.Graph(id="support:graph_volumes"),
                 ],
                     style={"padding": "5px 0px 5px 0px"},
                 ),
