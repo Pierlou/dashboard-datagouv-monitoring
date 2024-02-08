@@ -141,7 +141,9 @@ app.layout = dbc.Container(
                             children='Rafraîchir les données'
                         ),
                     ]),
-                ]),
+                ],
+                    style={"padding": "5px 0px 5px 0px"},
+                ),
                 dcc.Graph(id='kpi:graph_kpi'),
             ]),
         ]),
