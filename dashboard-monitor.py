@@ -316,9 +316,7 @@ def refresh_certif(click):
         for f in client.list_objects(bucket, prefix=folder)
         if f.object_name.replace(folder, '').startswith('20')
     ]
-    print(certif_dates)
     last_days = get_latest_day_of_each_month(certif_dates)
-    print(last_days)
     stats = {}
     for month in last_days:
         stats[month] = {}
@@ -329,7 +327,6 @@ def refresh_certif(click):
             with open(file, 'r') as f:
                 tmp = json.load(f)
             stats[month][file.replace('.json', '')] = tmp
-    print(stats)
     return create_certif_graph(stats)
 
 
