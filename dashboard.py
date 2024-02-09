@@ -11,16 +11,29 @@ from dash.exceptions import PreventUpdate
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+import json
 from minio import Minio
 
 external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 bucket = "dataeng-open"
-path = "support/stats_support.csv"
+folder = "dashboard/"
+support_file = "stats_support.csv"
 client = Minio(
     "object.files.data.gouv.fr",
     secure=True,
 )
+
+
+def get_latest_day_of_each_month(days_list):
+    last_days = {}
+    for day in days_list:
+        month = day[:7]
+        if month not in last_days:
+            last_days[month] = day
+        elif last_days[month] < day:
+            last_days[month] = day
+    return last_days
 
 
 def create_volumes_graph(stats):
@@ -95,6 +108,38 @@ def create_taux_graph(stats):
     return fig
 
 
+def create_certif_graph(stats):
+    data = {
+        'Mois': stats.keys(),
+        'Orgas certifiées': [len(k['certified']) for k in stats.values()],
+        'SP ou CT non certifiés': [
+            len([o for o in k['SP_or_CT'] if o not in k['certified']])
+            for k in stats.values()
+        ],
+    }
+    df = pd.DataFrame(data)
+    df = pd.melt(
+        df,
+        id_vars=['Mois'],
+        var_name='Type',
+        value_name='Nombre',
+    )
+    fig = px.bar(
+        df,
+        x='Mois',
+        y='Nombre',
+        color='Type',
+        barmode='group',
+    )
+    fig.update_layout(
+        xaxis=dict(
+            tickformat="%b 20%y",
+            dtick="M1"
+        )
+    )
+    return fig
+
+
 # %% APP LAYOUT:
 app.layout = dbc.Container(
     [
@@ -146,6 +191,28 @@ app.layout = dbc.Container(
                 ),
                 dcc.Graph(id='kpi:graph_kpi'),
             ]),
+            dcc.Tab(label="Certification", children=[
+                dbc.Row([
+                    dbc.Col([
+                        dbc.Button(
+                            id='certif:button_refresh',
+                            children='Rafraîchir les données'
+                        ),
+                    ]),
+                    # dbc.Col([
+                    #     html.Div([
+                    #         dbc.Button(
+                    #             id='support:button_download',
+                    #             children='Télécharger les données sources'
+                    #         ),
+                    #         dcc.Download(id="support:download_stats")
+                    #     ])
+                    # ]),
+                    dcc.Graph(id="certif:graph"),
+                ],
+                    style={"padding": "5px 0px 5px 0px"},
+                ),
+            ]),
         ]),
         dcc.Store(id='datastore', data={}),
     ])
@@ -162,9 +229,9 @@ app.layout = dbc.Container(
 )
 def update_dropdown_options(click):
     client.fget_object(
-        bucket, path, path.split('/')[-1]
+        bucket, folder + support_file, support_file
     )
-    stats = pd.read_csv(path.split('/')[-1], index_col=0)
+    stats = pd.read_csv(support_file, index_col=0)
     return create_volumes_graph(stats), create_taux_graph(stats)
 
 
@@ -174,10 +241,10 @@ def update_dropdown_options(click):
 )
 def download_data(click):
     if click:
-        stats = pd.read_csv(path.split('/')[-1], index_col=0)
+        stats = pd.read_csv(support_file, index_col=0)
         return {
             'content': stats.to_csv(),
-            'filename': path.split('/')[-1]
+            'filename': support_file
         }
     return
 
@@ -236,6 +303,34 @@ def change_kpis_graph(indic, datastore):
         yaxis_range=[0, max(restr['valeur'])*1.1]
     )
     return fig
+
+
+# Certif
+@app.callback(
+    Output("certif:graph", "figure"),
+    [Input('certif:button_refresh', 'n_clicks')],
+)
+def refresh_certif(click):
+    certif_dates = [
+        f.object_name.replace(folder, '')[:-1]
+        for f in client.list_objects(bucket, prefix=folder)
+        if f.object_name.replace(folder, '').startswith('20')
+    ]
+    print(certif_dates)
+    last_days = get_latest_day_of_each_month(certif_dates)
+    print(last_days)
+    stats = {}
+    for month in last_days:
+        stats[month] = {}
+        for file in ['certified.json', 'SP_or_CT.json']:
+            client.fget_object(
+                bucket, folder + last_days[month] + '/' + file, file
+            )
+            with open(file, 'r') as f:
+                tmp = json.load(f)
+            stats[month][file.replace('.json', '')] = tmp
+    print(stats)
+    return create_certif_graph(stats)
 
 
 # %%
