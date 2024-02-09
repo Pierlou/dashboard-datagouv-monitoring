@@ -12,6 +12,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import json
+import requests
 from minio import Minio
 
 external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
@@ -147,7 +148,8 @@ app.layout = dbc.Container(
             html.H3(
                 "Visualisation d'indicateurs de data.gouv.fr",
                 style={
-                    "padding": "5px 0px 10px 0px",  # "padding": "top right down left"
+                    "padding": "5px 0px 10px 0px",
+                    # "padding": "top right down left"
                 },
             ),
         ]),
@@ -212,12 +214,15 @@ app.layout = dbc.Container(
                 ],
                     style={"padding": "5px 0px 5px 0px"},
                 ),
+                dbc.Row(id='certif:suggestions'),
+                dbc.Row(id='certif:issues'),
             ]),
         ]),
         dcc.Store(id='datastore', data={}),
     ])
 
 # %% Callbacks
+
 
 # Support
 @app.callback(
@@ -307,7 +312,11 @@ def change_kpis_graph(indic, datastore):
 
 # Certif
 @app.callback(
-    Output("certif:graph", "figure"),
+    [
+        Output("certif:graph", "figure"),
+        Output("certif:suggestions", "children"),
+        Output("certif:issues", "children"),
+    ],
     [Input('certif:button_refresh', 'n_clicks')],
 )
 def refresh_certif(click):
@@ -318,7 +327,7 @@ def refresh_certif(click):
     ]
     last_days = get_latest_day_of_each_month(certif_dates)
     stats = {}
-    for month in last_days:
+    for idx, month in enumerate(last_days):
         stats[month] = {}
         for file in ['certified.json', 'SP_or_CT.json']:
             client.fget_object(
@@ -327,7 +336,53 @@ def refresh_certif(click):
             with open(file, 'r') as f:
                 tmp = json.load(f)
             stats[month][file.replace('.json', '')] = tmp
-    return create_certif_graph(stats)
+        if idx == len(last_days) - 1:
+            client.fget_object(
+                bucket,
+                folder + last_days[month] + '/' + 'issues.json',
+                'issues.json'
+            )
+            with open('issues.json', 'r') as f:
+                issues = json.load(f)
+            with open('certified.json', 'r') as f:
+                certified = json.load(f)
+            with open('SP_or_CT.json', 'r') as f:
+                SP_or_CT = json.load(f)
+
+    session = requests.Session()
+    suggestions = [
+        o for o in SP_or_CT if o not in certified
+    ]
+    suggestions_md = ''
+    if suggestions:
+        suggestions_md += '## Suggestions de certifications :'
+    for s in suggestions:
+        name = session.get(
+            f"https://www.data.gouv.fr/api/1/organizations/{s}/",
+            headers={'X-fields': 'name'}
+        ).json()['name']
+        suggestions_md += (
+            f"\n- [{name}](https://www.data.gouv.fr/fr/organizations/{s}/)"
+        )
+
+    issues_md = ''
+    if issues:
+        issues_md += '## Liste des SIRETs qui posent problème :'
+    for i in issues:
+        name = session.get(
+            f"https://www.data.gouv.fr/api/1/organizations/{list(i.keys())[0]}/",
+            headers={'X-fields': 'name'}
+        ).json()['name']
+        issues_md += (
+            f"\n- [{name}](https://www.data.gouv.fr/fr/organizations/"
+            f"{list(i.keys())[0]}) : {list(i.values())[0]}"
+        )
+
+    return (
+        create_certif_graph(stats),
+        [dcc.Markdown(suggestions_md)],
+        [dcc.Markdown(issues_md)]
+    )
 
 
 # %%
