@@ -20,6 +20,7 @@ app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 bucket = "dataeng-open"
 folder = "dashboard/"
 support_file = "stats_support.csv"
+suggestions_file = "suggestions.csv"
 client = Minio(
     "object.files.data.gouv.fr",
     secure=True,
@@ -35,6 +36,13 @@ def get_latest_day_of_each_month(days_list):
         elif last_days[month] < day:
             last_days[month] = day
     return last_days
+
+
+def is_certified(badges):
+    for b in badges:
+        if b['kind'] == 'certified':
+            return True
+    return False
 
 
 def create_volumes_graph(stats):
@@ -201,24 +209,32 @@ app.layout = dbc.Container(
                             children='Rafraîchir les données'
                         ),
                     ]),
-                    # dbc.Col([
-                    #     html.Div([
-                    #         dbc.Button(
-                    #             id='support:button_download',
-                    #             children='Télécharger les données sources'
-                    #         ),
-                    #         dcc.Download(id="support:download_stats")
-                    #     ])
-                    # ]),
                     dcc.Graph(id="certif:graph"),
                 ],
                     style={"padding": "5px 0px 5px 0px"},
                 ),
+                dbc.Row([
+                    dbc.Col([
+                        html.H3('Suggestions de certifications :'),
+                    ]),
+                    dbc.Col([
+                        html.Div([
+                            dbc.Button(
+                                id='certif:button_download',
+                                children=(
+                                    'Télécharger les données des suggestions'
+                                )
+                            ),
+                            dcc.Download(id="certif:download_stats")
+                        ]),
+                    ]),
+                ]),
                 dbc.Row(id='certif:suggestions'),
                 dbc.Row(id='certif:issues'),
             ]),
         ]),
         dcc.Store(id='datastore', data={}),
+        dcc.Store(id='certif:datastore', data={}),
     ])
 
 # %% Callbacks
@@ -244,7 +260,7 @@ def update_dropdown_options(click):
     Output("support:download_stats", "data"),
     [Input('support:button_download', 'n_clicks')]
 )
-def download_data(click):
+def download_data_support(click):
     if click:
         stats = pd.read_csv(support_file, index_col=0)
         return {
@@ -262,7 +278,8 @@ def download_data(click):
 )
 def refresh_kpis(click, datastore):
     kpis = pd.read_csv(
-        'https://www.data.gouv.fr/fr/datasets/r/79e2c14d-8278-4407-84b5-e8c279fc578c'
+        'https://www.data.gouv.fr/fr/datasets/'
+        'r/79e2c14d-8278-4407-84b5-e8c279fc578c'
     )
     datastore.update({'kpis': kpis.to_json()})
     return datastore
@@ -288,11 +305,17 @@ def refresh_kpis_dropdown(datastore):
 def change_kpis_graph(indic, datastore):
     if not indic:
         raise PreventUpdate
+    mapping = {
+        'barchart': px.bar,
+        'linechart': px.line,
+        'scatterplot': px.scatter,
+    }
     kpis = pd.read_json(datastore['kpis'])
     restr = kpis.loc[kpis['indicateur'] == indic].sort_values('date')
     restr['mois'] = restr['date'].apply(lambda d: d.strftime('%Y-%m'))
     restr = restr.drop_duplicates(subset='mois')
-    fig = px.bar(
+    _method = mapping.get(restr['dataviz_wish'].unique()[0])
+    fig = _method(
         restr,
         x='mois',
         y='valeur',
@@ -316,6 +339,7 @@ def change_kpis_graph(indic, datastore):
         Output("certif:graph", "figure"),
         Output("certif:suggestions", "children"),
         Output("certif:issues", "children"),
+        Output("certif:datastore", "data"),
     ],
     [Input('certif:button_refresh', 'n_clicks')],
 )
@@ -354,23 +378,34 @@ def refresh_certif(click):
         o for o in SP_or_CT if o not in certified
     ]
     suggestions_md = ''
-    if suggestions:
-        suggestions_md += '## Suggestions de certifications :'
-    for s in suggestions:
-        name = session.get(
+    suggestions_data = []
+    for idx, s in enumerate(suggestions):
+        params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
-            headers={'X-fields': 'name'}
-        ).json()['name']
+            headers={'X-fields': 'name,created_at,badges'}
+        ).json()
+        # to prevent showing orgas that have been certified since last DAG run
+        if is_certified(params['badges']):
+            continue
+        if idx > 0:
+            suggestions_md += '\n'
         suggestions_md += (
-            f"\n- [{name}](https://www.data.gouv.fr/fr/organizations/{s}/)"
+            f"- [{params['name']}]"
+            f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
         )
+        suggestions_data.append({
+            'name': params['name'],
+            'created_at': params['created_at'][:10],
+            'url': f'https://www.data.gouv.fr/fr/organizations/{s}/'
+        })
 
     issues_md = ''
     if issues:
         issues_md += '## Liste des SIRETs qui posent problème :'
     for i in issues:
         name = session.get(
-            f"https://www.data.gouv.fr/api/1/organizations/{list(i.keys())[0]}/",
+            "https://www.data.gouv.fr/api/1/"
+            f"organizations/{list(i.keys())[0]}/",
             headers={'X-fields': 'name'}
         ).json()['name']
         issues_md += (
@@ -381,8 +416,24 @@ def refresh_certif(click):
     return (
         create_certif_graph(stats),
         [dcc.Markdown(suggestions_md)],
-        [dcc.Markdown(issues_md)]
+        [dcc.Markdown(issues_md)],
+        {"suggestions": suggestions_data},
     )
+
+
+@app.callback(
+    Output("certif:download_stats", "data"),
+    [Input('certif:button_download', 'n_clicks')],
+    [State('certif:datastore', 'data')],
+)
+def download_data_certif(click, datastore):
+    if click:
+        df = pd.DataFrame(datastore['suggestions'])
+        return {
+            'content': df.to_csv(index=False),
+            'filename': suggestions_file
+        }
+    return
 
 
 # %%
