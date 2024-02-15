@@ -4,6 +4,7 @@ import dash
 # from dash import dash_table
 from dash import dcc
 from dash import html
+import dash_auth
 # import dash_daq as daq
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
@@ -14,6 +15,10 @@ import pandas as pd
 import json
 import requests
 from minio import Minio
+from my_secrets import (
+    VALID_USERNAME_PASSWORD_PAIRS,
+    DATAGOUV_API_KEY,
+)
 
 external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
@@ -24,6 +29,11 @@ suggestions_file = "suggestions.csv"
 client = Minio(
     "object.files.data.gouv.fr",
     secure=True,
+)
+
+auth = dash_auth.BasicAuth(
+    app,
+    VALID_USERNAME_PASSWORD_PAIRS
 )
 
 
@@ -382,21 +392,33 @@ def refresh_certif(click):
     for idx, s in enumerate(suggestions):
         params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
-            headers={'X-fields': 'name,created_at,badges'}
+            headers={
+                'X-fields': 'name,created_at,badges,members{user{uri}}',
+            }
         ).json()
         # to prevent showing orgas that have been certified since last DAG run
         if is_certified(params['badges']):
             continue
+        emails = []
+        for user in params['members']:
+            r = session.get(
+                user['user']['uri'],
+                headers={"X-API-KEY": DATAGOUV_API_KEY},
+            ).json()
+            emails.append(r['email'])
         if idx > 0:
             suggestions_md += '\n'
         suggestions_md += (
             f"- [{params['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
         )
+        for email in emails:
+            suggestions_md += '\n   - ' + email
         suggestions_data.append({
             'name': params['name'],
             'created_at': params['created_at'][:10],
-            'url': f'https://www.data.gouv.fr/fr/organizations/{s}/'
+            'url': f'https://www.data.gouv.fr/fr/organizations/{s}/',
+            'emails': '; '.join(emails),
         })
 
     issues_md = ''
