@@ -26,6 +26,7 @@ bucket = "dataeng-open"
 folder = "dashboard/"
 support_file = "stats_support.csv"
 suggestions_file = "suggestions.csv"
+max_displayed_suggestions = 10
 client = Minio(
     "object.files.data.gouv.fr",
     secure=True,
@@ -46,6 +47,10 @@ def get_latest_day_of_each_month(days_list):
         elif last_days[month] < day:
             last_days[month] = day
     return last_days
+
+
+def every_second_row_style(idx):
+    return {'background-color': 'lightgray' if idx % 2 == 0 else 'white'}
 
 
 def is_certified(badges):
@@ -224,9 +229,17 @@ app.layout = dbc.Container(
                     style={"padding": "5px 0px 5px 0px"},
                 ),
                 dbc.Row([
-                    dbc.Col([
+                    dbc.Col(id='certif:tooltip', children=[
                         html.H3('Suggestions de certifications :'),
                     ]),
+                    dbc.Tooltip(
+                        "Dans un souci de performances, seules "
+                        f"{max_displayed_suggestions} sont affichées. "
+                        "Une fois celles-ci traîtées, rafraîchir les données "
+                        "pour en afficher plus.",
+                        target="certif:tooltip",
+                        placement='right',
+                    ),
                     dbc.Col([
                         html.Div([
                             dbc.Button(
@@ -239,7 +252,8 @@ app.layout = dbc.Container(
                         ]),
                     ]),
                 ]),
-                dbc.Row(id='certif:suggestions'),
+                # html.H6(id='tmp_output'),
+                html.Div(id='certif:suggestions'),
                 dbc.Row(id='certif:issues'),
             ]),
         ]),
@@ -387,9 +401,14 @@ def refresh_certif(click):
     suggestions = [
         o for o in SP_or_CT if o not in certified
     ]
-    suggestions_md = ''
+    suggestions_divs = []
     suggestions_data = []
+
     for idx, s in enumerate(suggestions):
+        # for performance purposes, only displaying X suggestions
+        # refresh when work is done to certify more
+        if len(suggestions_divs) > max_displayed_suggestions:
+            break
         params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
             headers={
@@ -397,7 +416,7 @@ def refresh_certif(click):
             }
         ).json()
         # to prevent showing orgas that have been certified since last DAG run
-        if is_certified(params['badges']):
+        if 'badges' not in params or is_certified(params['badges']):
             continue
         emails = []
         for user in params['members']:
@@ -406,14 +425,24 @@ def refresh_certif(click):
                 headers={"X-API-KEY": DATAGOUV_API_KEY},
             ).json()
             emails.append(r['email'])
-        if idx > 0:
-            suggestions_md += '\n'
-        suggestions_md += (
+        md = (
             f"- [{params['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
         )
         for email in emails:
-            suggestions_md += '\n   - ' + email
+            md += '\n   - ' + email
+        suggestions_divs += [dbc.Row(children=[
+            dbc.Col(children=[dcc.Markdown(md)]),
+            dbc.Col(children=[html.Div(dbc.Button(
+                id={'type': 'certify', 'index': f'certif:button_{idx}_{s}'},
+                children='Certifier cette organisation',
+                color="info",
+            ),
+                style={"padding": "10px 0px 0px 0px"},
+            )]),
+        ],
+            style=every_second_row_style(idx),
+        )]
         suggestions_data.append({
             'name': params['name'],
             'created_at': params['created_at'][:10],
@@ -437,13 +466,63 @@ def refresh_certif(click):
 
     return (
         create_certif_graph(stats),
-        [dcc.Markdown(suggestions_md)],
+        suggestions_divs,
         [dcc.Markdown(issues_md)],
         {"suggestions": suggestions_data},
     )
 
 
 @app.callback(
+    Output("certif:suggestions", "children", allow_duplicate=True),
+    [Input({'type': 'certify', 'index': dash.ALL}, 'n_clicks')],
+    prevent_initial_call=True,
+)
+# this is triggered on click, we use context to get which button was clicked
+# and perform the right action according to the button id
+def print_output(*args):
+    patched_children = dash.Patch()
+    if all([a is None for a in args[0]]):
+        raise PreventUpdate
+    # par construction, don't worry it works
+    idx, orga_id = eval(
+        dash.ctx.triggered[0]["prop_id"].split(".")[0]
+    )['index'].split('_')[-2:]
+    idx = int(idx)
+    r = requests.get(
+        f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
+        headers={'X-fields': 'name'},
+    )
+    # r = requests.put(
+    #     f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
+    #     json={'badges': [
+    #         {"kind": "public-service"},
+    #         {"kind": "certified"}
+    #     ]},
+    #     headers={"X-API-KEY": DATAGOUV_API_KEY},
+    # )
+    if not r.ok:
+        patched_children[idx] = dbc.Row(children=[html.H4(
+            'Une erreur est survenue '
+            'en essayant de certifier [cette organisation]'
+            f'(https://www.data.gouv.fr/fr/organizations/{orga_id}/)'
+        )],
+            style=every_second_row_style(idx),
+        )
+        return patched_children
+
+    r = r.json()
+    patched_children[idx] = dbc.Row(
+        children=[dcc.Markdown(children=[
+            f"- [{r['name']}]"
+            f"(https://www.data.gouv.fr/fr/organizations/{orga_id}/)"
+            " : certifiée ☑"
+        ])],
+        style=every_second_row_style(idx),
+    )
+    return patched_children
+
+
+@dash_auth.public_callback(
     Output("certif:download_stats", "data"),
     [Input('certif:button_download', 'n_clicks')],
     [State('certif:datastore', 'data')],
