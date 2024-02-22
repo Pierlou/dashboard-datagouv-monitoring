@@ -14,19 +14,28 @@ import plotly.graph_objects as go
 import pandas as pd
 import json
 import requests
+import re
+from unidecode import unidecode
 from minio import Minio
+from thefuzz import fuzz
+from io import StringIO
 from my_secrets import (
     VALID_USERNAME_PASSWORD_PAIRS,
     DATAGOUV_API_KEY,
 )
 
-external_stylesheets = [dbc.themes.BOOTSTRAP, 'https://codepen.io/chriddyp/pen/bWLwgP.css']
+external_stylesheets = [
+    dbc.themes.BOOTSTRAP,
+    'https://codepen.io/chriddyp/pen/bWLwgP.css'
+]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 bucket = "dataeng-open"
 folder = "dashboard/"
 support_file = "stats_support.csv"
 suggestions_file = "suggestions.csv"
 max_displayed_suggestions = 10
+duplicate_slug_pattern = r'-\d+$'
+entreprises_api_url = "https://recherche-entreprises.api.gouv.fr/search?q="
 client = Minio(
     "object.files.data.gouv.fr",
     secure=True,
@@ -36,6 +45,18 @@ auth = dash_auth.BasicAuth(
     app,
     VALID_USERNAME_PASSWORD_PAIRS
 )
+
+# %% Functions
+
+
+def get_file_content(
+    client,
+    bucket,
+    file_path,
+    encoding="utf-8",
+):
+    r = client.get_object(bucket, file_path)
+    return r.read().decode(encoding)
 
 
 def get_latest_day_of_each_month(days_list):
@@ -58,6 +79,39 @@ def is_certified(badges):
         if b['kind'] == 'certified':
             return True
     return False
+
+
+def clean(text):
+    if isinstance(text, str):
+        if re.search(duplicate_slug_pattern, text) is not None:
+            suffix = re.findall(duplicate_slug_pattern, text)[0]
+            text = text[:-len(suffix)]
+        return unidecode(text.lower()).replace('-', '')
+    else:
+        # print(text)
+        return ""
+
+
+def symetric_ratio(s1, s2):
+    _score = fuzz.partial_ratio
+    if len(s1) > len(s2):
+        return _score(s2, s1)
+    return _score(s1, s2)
+
+
+def get_siret_from_siren(siren):
+    r = requests.get(entreprises_api_url + siren)
+    if not r.ok:
+        return None
+    r = r.json()['results']
+    if len(r) == 0:
+        print('No result')
+        return None
+    if len(r) > 1:
+        print("Ambiguous :", len(r))
+        return None
+    else:
+        return r[0]['siege']['siret']
 
 
 def create_volumes_graph(stats):
@@ -158,7 +212,6 @@ def create_certif_graph(stats):
     fig.update_layout(
         xaxis=dict(
             tickformat="%b 20%y",
-            dtick="M1"
         )
     )
     return fig
@@ -197,7 +250,7 @@ app.layout = dbc.Container(
                     dcc.Graph(id="support:graph_taux"),
                     dcc.Graph(id="support:graph_volumes"),
                 ],
-                    style={"padding": "5px 0px 5px 0px"},
+                    style={"padding": "15px 0px 5px 0px"},
                 ),
             ]),
             dcc.Tab(label="KPIs", children=[
@@ -212,9 +265,20 @@ app.layout = dbc.Container(
                         ),
                     ]),
                 ],
-                    style={"padding": "5px 0px 5px 0px"},
+                    style={"padding": "15px 0px 5px 0px"},
                 ),
                 dcc.Graph(id='kpi:graph_kpi'),
+            ]),
+            dcc.Tab(label="Reuses", children=[
+                dbc.Row([
+                    dbc.Button(
+                        id='reuses:button_refresh',
+                        children='Rafraîchir les données'
+                    ),
+                    dcc.Graph(id='reuses:graph'),
+                ],
+                    style={"padding": "15px 0px 5px 0px"},
+                ),
             ]),
             dcc.Tab(label="Certification", children=[
                 dbc.Row([
@@ -226,7 +290,7 @@ app.layout = dbc.Container(
                     ]),
                     dcc.Graph(id="certif:graph"),
                 ],
-                    style={"padding": "5px 0px 5px 0px"},
+                    style={"padding": "15px 0px 5px 0px"},
                 ),
                 dbc.Row([
                     dbc.Col(id='certif:tooltip', children=[
@@ -256,6 +320,46 @@ app.layout = dbc.Container(
                 html.Div(id='certif:suggestions'),
                 dbc.Row(id='certif:issues'),
             ]),
+            dcc.Tab(label="SIRETisation (IRVE)", children=[
+                dbc.Row(children=[
+                    dbc.Col(id='siret:tooltip', children=[
+                        html.H3(
+                            'Correspondances SIRETs trouvés dans les IRVE :'
+                        ),
+                    ], width=9),
+                    dbc.Tooltip(
+                        "Dans un souci de performances, seules "
+                        f"{max_displayed_suggestions} sont affichées. "
+                        "Une fois celles-ci traîtées, rafraîchir les données "
+                        "pour en afficher plus.",
+                        target="siret:tooltip",
+                        placement='bottom',
+                    ),
+                    dbc.Col(children=[
+                        dbc.Row(children=[
+                            html.H6('Tolérance du matching'),
+                            dcc.Slider(
+                                min=0,
+                                max=90,
+                                step=10,
+                                value=70,
+                                id='siret:slider'
+                            ),
+                        ]),
+                        dbc.Row(children=[
+                            dbc.Button(
+                                id='siret:button_refresh',
+                                children=(
+                                    'Rafraîchir les données'
+                                )
+                            ),
+                        ]),
+                    ], width=3),
+                ],
+                    style={"padding": "15px 0px 5px 0px"},
+                ),
+                html.Div(id='siret:matches'),
+            ]),
         ]),
         dcc.Store(id='datastore', data={}),
         dcc.Store(id='certif:datastore', data={}),
@@ -273,22 +377,26 @@ app.layout = dbc.Container(
     [Input('support:button_refresh', 'n_clicks')]
 )
 def update_dropdown_options(click):
-    client.fget_object(
-        bucket, folder + support_file, support_file
+    stats = pd.read_csv(
+        StringIO(
+            get_file_content(client, bucket, folder + support_file)
+        ),
+        index_col=0
     )
-    stats = pd.read_csv(support_file, index_col=0)
     return create_volumes_graph(stats), create_taux_graph(stats)
 
 
 @app.callback(
     Output("support:download_stats", "data"),
-    [Input('support:button_download', 'n_clicks')]
+    [Input('support:button_download', 'n_clicks')],
+    prevent_initial_call=True,
 )
 def download_data_support(click):
     if click:
-        stats = pd.read_csv(support_file, index_col=0)
         return {
-            'content': stats.to_csv(),
+            'content': (
+                get_file_content(client, bucket, folder + support_file)
+            ),
             'filename': support_file
         }
     return
@@ -349,10 +457,39 @@ def change_kpis_graph(indic, datastore):
         xaxis=dict(
             title='Mois',
             tickformat="%b 20%y",
-            dtick="M1"
         ),
         yaxis_title=f"Valeur ({restr['unite_mesure'].unique()[0]})",
         yaxis_range=[0, max(restr['valeur'])*1.1]
+    )
+    return fig
+
+
+# Reuses
+@app.callback(
+    Output("reuses:graph", "figure"),
+    [Input('reuses:button_refresh', 'n_clicks')],
+)
+def refresh_reuses_graph(click):
+    hist = pd.read_csv(StringIO(
+        get_file_content(client, bucket, folder + 'stats_reuses_down.csv')
+    ))
+    fig = px.bar(
+        pd.melt(
+            hist,
+            id_vars=['date'],
+            var_name='Type erreur',
+            value_name='Nombre'
+        ),
+        x='date',
+        y='Nombre',
+        color='Type erreur',
+        title='Nombre de reuses qui renvoient une erreur'
+    )
+    fig.update_layout(
+        xaxis=dict(
+            tickformat="%b 20%y",
+            title="Mois",
+        )
     )
     return fig
 
@@ -378,24 +515,21 @@ def refresh_certif(click):
     for idx, month in enumerate(last_days):
         stats[month] = {}
         for file in ['certified.json', 'SP_or_CT.json']:
-            client.fget_object(
-                bucket, folder + last_days[month] + '/' + file, file
+            stats[month][file.replace('.json', '')] = json.loads(
+                get_file_content(
+                    client,
+                    bucket,
+                    folder + last_days[month] + '/' + file
+                )
             )
-            with open(file, 'r') as f:
-                tmp = json.load(f)
-            stats[month][file.replace('.json', '')] = tmp
         if idx == len(last_days) - 1:
-            client.fget_object(
+            issues = json.loads(get_file_content(
+                client,
                 bucket,
-                folder + last_days[month] + '/' + 'issues.json',
-                'issues.json'
-            )
-            with open('issues.json', 'r') as f:
-                issues = json.load(f)
-            with open('certified.json', 'r') as f:
-                certified = json.load(f)
-            with open('SP_or_CT.json', 'r') as f:
-                SP_or_CT = json.load(f)
+                folder + last_days[month] + '/' + 'issues.json'
+            ))
+            certified = stats[month]['certified']
+            SP_or_CT = stats[month]['SP_or_CT']
 
     session = requests.Session()
     suggestions = [
@@ -407,7 +541,7 @@ def refresh_certif(click):
     for idx, s in enumerate(suggestions):
         # for performance purposes, only displaying X suggestions
         # refresh when work is done to certify more
-        if len(suggestions_divs) > max_displayed_suggestions:
+        if len(suggestions_divs) == max_displayed_suggestions:
             break
         params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
@@ -479,7 +613,7 @@ def refresh_certif(click):
 )
 # this is triggered on click, we use context to get which button was clicked
 # and perform the right action according to the button id
-def print_output(*args):
+def update_after_certif(*args):
     patched_children = dash.Patch()
     if all([a is None for a in args[0]]):
         raise PreventUpdate
@@ -522,10 +656,11 @@ def print_output(*args):
     return patched_children
 
 
-@dash_auth.public_callback(
+@app.callback(
     Output("certif:download_stats", "data"),
     [Input('certif:button_download', 'n_clicks')],
     [State('certif:datastore', 'data')],
+    prevent_initial_call=True,
 )
 def download_data_certif(click, datastore):
     if click:
@@ -535,6 +670,122 @@ def download_data_certif(click, datastore):
             'filename': suggestions_file
         }
     return
+
+
+# SIRET
+@app.callback(
+    Output("siret:matches", "children"),
+    [Input('siret:button_refresh', 'n_clicks')],
+    [State('siret:slider', 'value')],
+)
+def refresh_siret(click, slider):
+    df = pd.read_csv(
+        'https://www.data.gouv.fr/fr/datasets/'
+        'r/eb76d20a-8501-400e-b336-d85724de5435',
+        dtype=str,
+        usecols=[
+            'nom_amenageur',
+            'siren_amenageur',
+            'datagouv_organization_or_owner',
+        ]
+    )
+    restr = df.loc[
+        (~df['siren_amenageur'].isna()) & (~df['nom_amenageur'].isna())
+    ].drop_duplicates()
+    restr['cleaned_nom'] = restr['nom_amenageur'].apply(clean)
+    restr['cleaned_orga'] = restr['datagouv_organization_or_owner'].apply(clean)
+    restr['ratio'] = restr.apply(
+        lambda df_: symetric_ratio(df_['cleaned_orga'], df_['cleaned_nom']),
+        axis=1
+    )
+    restr = restr.loc[restr['ratio'] > slider]
+    siret_divs = []
+    session = requests.Session()
+    for orga in restr['datagouv_organization_or_owner'].unique():
+        if len(siret_divs) == max_displayed_suggestions:
+            break
+        tmp = restr.loc[
+            restr['datagouv_organization_or_owner'] == orga
+        ].drop_duplicates('siren_amenageur')
+        if len(tmp) == 1:
+            siren = list(tmp['siren_amenageur'])[0]
+            siret = get_siret_from_siren(siren)
+            if not siret:
+                continue
+            slug = list(tmp['datagouv_organization_or_owner'])[0]
+            r = session.get(
+                f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
+                headers={'X-fields': 'name,business_number_id'},
+            ).json()
+            if r['business_number_id']:
+                continue
+            match = list(tmp['nom_amenageur'])[0]
+            md1 = (
+                f"[{r['name']}](https://www.data.gouv.fr/fr/{slug}/) "
+                f"matchée avec {match}"
+            )
+            md2 = f"\nSIREN : {siren}, SIRET : {siret}"
+            siret_divs += [dbc.Row(children=[
+                dbc.Col(children=[dcc.Markdown(md1), dcc.Markdown(md2)]),
+                dbc.Col(children=[html.Div(dbc.Button(
+                    id={
+                        'type': 'siret',
+                        'index': f'siret:button_{len(siret_divs)}_{slug}_{siret}'
+                    },
+                    children='SIRETiser cette organisation',
+                    color="info",
+                ),
+                    style={"padding": "10px 0px 0px 0px"},
+                )]),
+            ],
+                style=every_second_row_style(len(siret_divs)),
+            )]
+    return siret_divs
+
+
+@app.callback(
+    Output("siret:matches", "children", allow_duplicate=True),
+    [Input({'type': 'siret', 'index': dash.ALL}, 'n_clicks')],
+    prevent_initial_call=True,
+)
+def update_after_siret(*args):
+    patched_children = dash.Patch()
+    if all([a is None for a in args[0]]):
+        raise PreventUpdate
+    # par construction, don't worry it works
+    idx, slug, siret = eval(
+        dash.ctx.triggered[0]["prop_id"].split(".")[0]
+    )['index'].split('_')[-3:]
+    idx = int(idx)
+    r = requests.get(
+        f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
+        headers={'X-fields': 'name'},
+    )
+    # r = requests.put(
+    #     f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
+    #     json={'business_number_id': siret},
+    #     headers={"X-API-KEY": DATAGOUV_API_KEY},
+    # )
+    if not r.ok:
+        patched_children[idx] = dbc.Row(children=[html.H4(
+            'Une erreur est survenue '
+            'en essayant de SIRETiser [cette organisation]'
+            f'(https://www.data.gouv.fr/fr/organizations/{slug}/)'
+        )],
+            style=every_second_row_style(idx),
+        )
+        return patched_children
+
+    r = r.json()
+    patched_children[idx] = dbc.Row(
+        children=[dcc.Markdown(children=[
+            f"[{r['name']}]"
+            f"(https://www.data.gouv.fr/fr/organizations/{slug}/)"
+            f" : siretisée avec {siret}"
+        ])],
+        style=every_second_row_style(idx),
+    )
+    return patched_children
 
 
 # %%
