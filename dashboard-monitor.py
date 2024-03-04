@@ -473,6 +473,9 @@ def refresh_reuses_graph(click):
     hist = pd.read_csv(StringIO(
         get_file_content(client, bucket, folder + 'stats_reuses_down.csv')
     ))
+    hist = hist.loc[hist['date'].isin(
+        get_latest_day_of_each_month(hist['date']).values()
+    )]
     fig = px.bar(
         pd.melt(
             hist,
@@ -563,19 +566,24 @@ def refresh_certif(click):
             f"- [{params['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
         )
+        if not emails:
+            md += '\n   - Pas de membres dans cette organisation'
         for email in emails:
             md += '\n   - ' + email
         suggestions_divs += [dbc.Row(children=[
             dbc.Col(children=[dcc.Markdown(md)]),
             dbc.Col(children=[html.Div(dbc.Button(
-                id={'type': 'certify', 'index': f'certif:button_{idx}_{s}'},
+                id={
+                    'type': 'certify',
+                    'index': f'certif:button_{len(suggestions_divs)}_{s}'
+                },
                 children='Certifier cette organisation',
                 color="info",
             ),
                 style={"padding": "10px 0px 0px 0px"},
             )]),
         ],
-            style=every_second_row_style(idx),
+            style=every_second_row_style(len(suggestions_divs)),
         )]
         suggestions_data.append({
             'name': params['name'],
@@ -622,36 +630,37 @@ def update_after_certif(*args):
         dash.ctx.triggered[0]["prop_id"].split(".")[0]
     )['index'].split('_')[-2:]
     idx = int(idx)
+    # r = requests.get(
+    #     f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
+    #     headers={'X-fields': 'name'},
+    # )
+    for badge in ["public-service", "certified"]:
+        r = requests.post(
+            f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/badges/",
+            json={"kind": badge},
+            headers={"X-API-KEY": DATAGOUV_API_KEY},
+        )
+        if not r.ok:
+            patched_children[idx] = dbc.Row(children=[html.H4(
+                'Une erreur est survenue '
+                'en essayant de certifier [cette organisation]'
+                f'(https://www.data.gouv.fr/fr/organizations/{orga_id}/)'
+            )],
+                style={'background-color': '#ffb6c1'},
+            )
+            return patched_children
+
     r = requests.get(
         f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
         headers={'X-fields': 'name'},
-    )
-    # r = requests.put(
-    #     f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
-    #     json={'badges': [
-    #         {"kind": "public-service"},
-    #         {"kind": "certified"}
-    #     ]},
-    #     headers={"X-API-KEY": DATAGOUV_API_KEY},
-    # )
-    if not r.ok:
-        patched_children[idx] = dbc.Row(children=[html.H4(
-            'Une erreur est survenue '
-            'en essayant de certifier [cette organisation]'
-            f'(https://www.data.gouv.fr/fr/organizations/{orga_id}/)'
-        )],
-            style=every_second_row_style(idx),
-        )
-        return patched_children
-
-    r = r.json()
+    ).json()
     patched_children[idx] = dbc.Row(
         children=[dcc.Markdown(children=[
             f"- [{r['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{orga_id}/)"
             " : certifiée ☑"
         ])],
-        style=every_second_row_style(idx),
+        style={'background-color': '#90ee90'},
     )
     return patched_children
 
@@ -693,7 +702,9 @@ def refresh_siret(click, slider):
         (~df['siren_amenageur'].isna()) & (~df['nom_amenageur'].isna())
     ].drop_duplicates()
     restr['cleaned_nom'] = restr['nom_amenageur'].apply(clean)
-    restr['cleaned_orga'] = restr['datagouv_organization_or_owner'].apply(clean)
+    restr['cleaned_orga'] = restr['datagouv_organization_or_owner'].apply(
+        clean
+    )
     restr['ratio'] = restr.apply(
         lambda df_: symetric_ratio(df_['cleaned_orga'], df_['cleaned_nom']),
         axis=1
@@ -757,22 +768,22 @@ def update_after_siret(*args):
         dash.ctx.triggered[0]["prop_id"].split(".")[0]
     )['index'].split('_')[-3:]
     idx = int(idx)
-    r = requests.get(
-        f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
-        headers={'X-fields': 'name'},
-    )
-    # r = requests.put(
+    # r = requests.get(
     #     f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
-    #     json={'business_number_id': siret},
-    #     headers={"X-API-KEY": DATAGOUV_API_KEY},
+    #     headers={'X-fields': 'name'},
     # )
+    r = requests.put(
+        f"https://www.data.gouv.fr/api/1/organizations/{slug}/",
+        json={'business_number_id': siret},
+        headers={"X-API-KEY": DATAGOUV_API_KEY},
+    )
     if not r.ok:
         patched_children[idx] = dbc.Row(children=[html.H4(
             'Une erreur est survenue '
             'en essayant de SIRETiser [cette organisation]'
             f'(https://www.data.gouv.fr/fr/organizations/{slug}/)'
         )],
-            style=every_second_row_style(idx),
+            style={'background-color': '#ffb6c1'},
         )
         return patched_children
 
@@ -783,7 +794,7 @@ def update_after_siret(*args):
             f"(https://www.data.gouv.fr/fr/organizations/{slug}/)"
             f" : siretisée avec {siret}"
         ])],
-        style=every_second_row_style(idx),
+        style={'background-color': '#90ee90'},
     )
     return patched_children
 
