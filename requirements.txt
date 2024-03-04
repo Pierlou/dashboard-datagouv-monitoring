@@ -9,3 +9,4 @@ plotly
 requests
 minio
 Unidecode
+thefuzz
