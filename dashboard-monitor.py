@@ -473,17 +473,26 @@ def refresh_reuses_graph(click):
     hist = pd.read_csv(StringIO(
         get_file_content(client, bucket, folder + 'stats_reuses_down.csv')
     ))
-    hist = hist.loc[hist['date'].isin(
-        get_latest_day_of_each_month(hist['date']).values()
+    hist = hist.loc[hist['Date'].isin(
+        get_latest_day_of_each_month(hist['Date']).values()
     )]
+    scatter = hist.copy(deep=True)
+    scatter['Taux'] = scatter.apply(
+        lambda df: round(
+            (df['404'] + df['Autre erreur']) / df['Total'] * 100,
+            1
+        ),
+        axis=1
+    )
+    hist = hist[['Date', '404', 'Autre erreur']]
     fig = px.bar(
         pd.melt(
             hist,
-            id_vars=['date'],
+            id_vars=['Date'],
             var_name='Type erreur',
             value_name='Nombre'
         ),
-        x='date',
+        x='Date',
         y='Nombre',
         color='Type erreur',
         title='Nombre de reuses qui renvoient une erreur'
@@ -492,6 +501,26 @@ def refresh_reuses_graph(click):
         xaxis=dict(
             tickformat="%b 20%y",
             title="Mois",
+        )
+    )
+    fig.add_trace(go.Scatter(
+        x=scatter['Date'].to_list(),
+        y=scatter['Taux'].to_list(),
+        mode='lines',
+        name='Taux de reuses down',
+        yaxis='y2'
+    ))
+    fig.update_layout(
+        yaxis2=dict(
+            title='Taux de reuses down',
+            overlaying='y',
+            side='right',
+            range=[0, max(scatter['Taux']) * 1.1]
+        ),
+        legend=dict(
+            orientation='h',
+            y=1.1,
+            x=0
         )
     )
     return fig
