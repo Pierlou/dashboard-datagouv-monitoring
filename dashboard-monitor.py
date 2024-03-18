@@ -334,7 +334,7 @@ app.layout = dbc.Container(
                                 },
                                 {
                                     'label': 'Jeux de données moissonnés',
-                                    'value': 'harvest'
+                                    'value': 'harvested'
                                 },
                                 {
                                     'label': 'Jeux de données statiques',
