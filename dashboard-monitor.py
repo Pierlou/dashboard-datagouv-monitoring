@@ -579,7 +579,8 @@ def change_kpis_graph(indic, datastore):
         restr,
         x='mois',
         y='valeur',
-        title=indic
+        title=indic,
+        text_auto=True,
     )
     fig.update_layout(
         xaxis=dict(
@@ -610,7 +611,7 @@ def change_datasets_quality_graph(indic, param):
     for date in dates.values():
         data.append([date, datasets_quality[date][indic][param]])
     df = pd.DataFrame(data, columns=('date', 'moyenne'))
-    fig = px.bar(df, x="date", y="moyenne")
+    fig = px.bar(df, x="date", y="moyenne", text_auto=True)
     volumes = [[
         d,
         datasets_quality[d]['count'][indic]
@@ -683,6 +684,7 @@ def change_resources_types_graph(indic, percent_threshold):
         x="date",
         y="count",
         color="format",
+        text_auto=True,
     )
     fig.update_layout(
         xaxis=dict(
