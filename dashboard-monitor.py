@@ -382,7 +382,7 @@ app.layout = dbc.Container(
                     ]),
                     dbc.Col([
                         dbc.Row(children=[
-                            html.H6('% de représentation minimal'),
+                            html.H6('% seuil du groupe "Autres formats"'),
                             dcc.Slider(
                                 min=0.2,
                                 max=3,
