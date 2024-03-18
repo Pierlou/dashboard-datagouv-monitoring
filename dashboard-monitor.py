@@ -384,9 +384,9 @@ app.layout = dbc.Container(
                         dbc.Row(children=[
                             html.H6('% de représentation minimal'),
                             dcc.Slider(
-                                min=0,
-                                max=5,
-                                step=0.5,
+                                min=0.2,
+                                max=3,
+                                step=0.2,
                                 value=2,
                                 id='catalog:slider'
                             ),
