@@ -61,7 +61,7 @@ def get_file_content(
 
 def get_latest_day_of_each_month(days_list):
     last_days = {}
-    for day in days_list:
+    for day in sorted(days_list):
         month = day[:7]
         if month not in last_days:
             last_days[month] = day
@@ -253,7 +253,8 @@ app.layout = dbc.Container(
                     style={"padding": "15px 0px 5px 0px"},
                 ),
             ]),
-            dcc.Tab(label="KPIs", children=[
+            dcc.Tab(label="KPIs & catalogue", children=[
+                html.H5('KPIs de data.gouv'),
                 dbc.Row([
                     dbc.Col([
                         dcc.Dropdown(id="kpi:dropdown"),
@@ -268,6 +269,133 @@ app.layout = dbc.Container(
                     style={"padding": "15px 0px 5px 0px"},
                 ),
                 dcc.Graph(id='kpi:graph_kpi'),
+                html.H5('Qualité des jeux de données'),
+                dbc.Row([
+                    dbc.Col([
+                        dcc.Dropdown(
+                            id="catalog:dropdown_quality_indicator",
+                            placeholder="Choisir un critère qualité...",
+                            options=[
+                                {
+                                    'label': 'Tous les fichiers sont disponibles',
+                                    'value': 'all_resources_available',
+                                },
+                                {
+                                    'label': 'Description des données renseignée',
+                                    'value': 'dataset_description_quality',
+                                },
+                                {
+                                    'label': 'Formats de fichiers standards',
+                                    'value': 'has_open_format',
+                                },
+                                {
+                                    'label': 'Au moins une ressource',
+                                    'value': 'has_resources',
+                                },
+                                {
+                                    'label': 'Licence renseignée',
+                                    'value': 'license',
+                                },
+                                {
+                                    'label': 'Fichiers documentés',
+                                    'value': 'resources_documentation',
+                                },
+                                {
+                                    'label': 'Score qualité global',
+                                    'value': 'score',
+                                },
+                                {
+                                    'label': 'Couverture spatiale renseignée',
+                                    'value': 'spatial',
+                                },
+                                {
+                                    'label': 'Couverture temporelle renseignée',
+                                    'value': 'temporal_coverage',
+                                },
+                                {
+                                    'label': 'Fréquence de mise à jour respectée',
+                                    'value': 'update_fulfilled_in_time',
+                                },
+                                {
+                                    'label': 'Fréquence de mise à jour renseignée',
+                                    'value': 'update_frequency',
+                                },
+                            ]
+                        ),
+                    ]),
+                    dbc.Col([
+                        dcc.Dropdown(
+                            id="catalog:dropdown_datasets_types",
+                            placeholder="Choisir le scope...",
+                            options=[
+                                {
+                                    'label': 'Tous les jeux de données',
+                                    'value': 'all'
+                                },
+                                {
+                                    'label': 'Jeux de données moissonnés',
+                                    'value': 'harvest'
+                                },
+                                {
+                                    'label': 'Jeux de données statiques',
+                                    'value': 'local'
+                                },
+                            ]
+                        ),
+                    ]),
+                ],
+                    style={"padding": "15px 0px 5px 0px"},
+                ),
+                dcc.Graph(id='catalog:datasets_types'),
+                html.H5('Types et formats des ressources'),
+                dbc.Row([
+                    dbc.Col([
+                        dcc.Dropdown(
+                            id="catalog:dropdown_resources_types",
+                            options=[
+                                {
+                                    'label': 'Tous les types de ressources',
+                                    'value': 'all'
+                                },
+                                {
+                                    'label': 'Ressources principales',
+                                    'value': 'main'
+                                },
+                                {
+                                    'label': 'Documentations',
+                                    'value': 'documentation'
+                                },
+                                {
+                                    'label': 'API',
+                                    'value': 'api'
+                                },
+                                {
+                                    'label': 'Mises à jour',
+                                    'value': 'update'
+                                },
+                                {
+                                    'label': 'Code source',
+                                    'value': 'code'
+                                },
+                            ]
+                        ),
+                    ]),
+                    dbc.Col([
+                        dbc.Row(children=[
+                            html.H6('% de représentation minimal'),
+                            dcc.Slider(
+                                min=0,
+                                max=5,
+                                step=0.5,
+                                value=2,
+                                id='catalog:slider'
+                            ),
+                        ]),
+                    ]),
+                ],
+                    style={"padding": "15px 0px 5px 0px"},
+                ),
+                dcc.Graph(id='catalog:resources_types'),
             ]),
             dcc.Tab(label="Reuses", children=[
                 dbc.Row([
@@ -402,7 +530,7 @@ def download_data_support(click):
     return
 
 
-# KPIs
+# KPIs et catalogue
 @app.callback(
     Output("datastore", "data"),
     [Input('kpi:button_refresh', 'n_clicks')],
@@ -460,6 +588,109 @@ def change_kpis_graph(indic, datastore):
         ),
         yaxis_title=f"Valeur ({restr['unite_mesure'].unique()[0]})",
         yaxis_range=[0, max(restr['valeur'])*1.1]
+    )
+    return fig
+
+
+@app.callback(
+    Output("catalog:datasets_types", "figure"),
+    [
+        Input('catalog:dropdown_datasets_types', 'value'),
+        Input('catalog:dropdown_quality_indicator', 'value'),
+    ]
+)
+def change_datasets_quality_graph(indic, param):
+    if not indic or not param:
+        raise PreventUpdate
+    datasets_quality = json.loads(
+        get_file_content(client, bucket, folder + "datasets_quality.json")
+    )
+    dates = get_latest_day_of_each_month(datasets_quality.keys())
+    data = []
+    for date in dates.values():
+        data.append([date, datasets_quality[date][indic][param]])
+    df = pd.DataFrame(data, columns=('date', 'moyenne'))
+    fig = px.bar(df, x="date", y="moyenne")
+    volumes = [[
+        d,
+        datasets_quality[d]['count'][indic]
+    ] for d in datasets_quality]
+    fig.add_trace(go.Scatter(
+        x=[v[0] for v in volumes],
+        y=[v[1] for v in volumes],
+        mode='lines',
+        name='Nombre de jeux de données',
+        yaxis='y2'
+    ))
+    fig.update_layout(
+        xaxis=dict(
+            title='Mois',
+            tickformat="%b 20%y",
+        ),
+        yaxis_title="Score moyen pour le critère sélectionné",
+        yaxis_range=[0, 1],
+        yaxis2=dict(
+            title='Nombre de jeux de données',
+            overlaying='y',
+            side='right',
+            range=[0, max([v[1] for v in volumes]) * 1.1]
+        ),
+        legend=dict(
+            orientation='h',
+            y=1.1,
+            x=0
+        )
+    )
+    return fig
+
+
+@app.callback(
+    Output("catalog:resources_types", "figure"),
+    [
+        Input('catalog:dropdown_resources_types', 'value'),
+        Input('catalog:slider', 'value'),
+    ]
+)
+def change_resources_types_graph(indic, percent_threshold):
+    if not indic:
+        raise PreventUpdate
+    data = []
+    resources_stats = json.loads(
+        get_file_content(client, bucket, folder + "resources_stats.json")
+    )
+    dates = get_latest_day_of_each_month(resources_stats.keys())
+    for date in dates.values():
+        for t in resources_stats[date][indic]:
+            data.append([date, t, resources_stats[date][indic][t]])
+    df = pd.DataFrame(data, columns=('date', 'format', 'count'))
+    threshold = percent_threshold / 100 * df.loc[
+        df['date'] == max(df['date']), 'count'
+    ].sum()
+    final = df.loc[df['count'] > threshold]
+    other = df.loc[df['count'] <= threshold]
+    for date in other['date'].unique():
+        final = pd.concat([
+            final,
+            pd.DataFrame([[
+                date,
+                'Autres formats',
+                other.loc[other['date'] == date, 'count'].sum()
+            ]], columns=final.columns)
+        ])
+    final.sort_values(by='count', ascending=False, inplace=True)
+    fig = px.bar(
+        final,
+        x="date",
+        y="count",
+        color="format",
+    )
+    fig.update_layout(
+        xaxis=dict(
+            title='Mois',
+            tickformat="%b 20%y",
+        ),
+        yaxis_title="Nombre de ressources par format de fichier",
+        yaxis_range=[0, sum(final['count'])*1.1]
     )
     return fig
 
