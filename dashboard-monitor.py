@@ -679,6 +679,10 @@ def change_resources_types_graph(indic, percent_threshold):
             ]], columns=final.columns)
         ])
     final.sort_values(by='count', ascending=False, inplace=True)
+    y_max = max([
+        sum(final.loc[final['date'] == date, 'count'])
+        for date in final['date'].unique()
+    ])
     fig = px.bar(
         final,
         x="date",
@@ -692,7 +696,7 @@ def change_resources_types_graph(indic, percent_threshold):
             tickformat="%b 20%y",
         ),
         yaxis_title="Nombre de ressources par format de fichier",
-        yaxis_range=[0, sum(final['count'])*1.1]
+        yaxis_range=[0, y_max*1.1]
     )
     return fig
 
@@ -709,6 +713,7 @@ def refresh_reuses_graph(click):
     hist = hist.loc[hist['Date'].isin(
         get_latest_day_of_each_month(hist['Date']).values()
     )]
+    hist['Date'] = hist['Date'].apply(lambda x: x[:7])
     scatter = hist.copy(deep=True)
     scatter['Taux'] = scatter.apply(
         lambda df: round(
@@ -728,7 +733,8 @@ def refresh_reuses_graph(click):
         x='Date',
         y='Nombre',
         color='Type erreur',
-        title='Nombre de reuses qui renvoient une erreur'
+        title='Nombre de reuses qui renvoient une erreur',
+        text_auto=True,
     )
     fig.update_layout(
         xaxis=dict(
