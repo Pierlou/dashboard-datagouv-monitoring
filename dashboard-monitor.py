@@ -104,8 +104,11 @@ def get_siret_from_siren(siren):
     try:
         r = requests.get(entreprises_api_url + siren)
     except:
-        sleep(0.5)
-        r = requests.get(entreprises_api_url + siren)
+        sleep(1)
+        try:
+            r = requests.get(entreprises_api_url + siren)
+        except:
+            return None
     if not r.ok:
         return None
     r = r.json()['results']
