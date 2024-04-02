@@ -19,6 +19,7 @@ from unidecode import unidecode
 from minio import Minio
 from thefuzz import fuzz
 from io import StringIO
+from time import sleep
 from my_secrets import (
     VALID_USERNAME_PASSWORD_PAIRS,
     DATAGOUV_API_KEY,
@@ -100,7 +101,11 @@ def symetric_ratio(s1, s2):
 
 
 def get_siret_from_siren(siren):
-    r = requests.get(entreprises_api_url + siren)
+    try:
+        r = requests.get(entreprises_api_url + siren)
+    except:
+        sleep(0.5)
+        r = requests.get(entreprises_api_url + siren)
     if not r.ok:
         return None
     r = r.json()['results']
@@ -208,6 +213,7 @@ def create_certif_graph(stats):
         y='Nombre',
         color='Type',
         barmode='group',
+        text_auto=True,
     )
     fig.update_layout(
         xaxis=dict(
@@ -997,6 +1003,7 @@ def refresh_siret(click, slider):
                 headers={'X-fields': 'name,business_number_id'},
             ).json()
             if r['business_number_id']:
+                # print(orga, 'already has siret:', r['business_number_id'])
                 continue
             match = list(tmp['nom_amenageur'])[0]
             md1 = (
