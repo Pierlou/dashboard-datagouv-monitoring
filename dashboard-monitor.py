@@ -20,6 +20,7 @@ from minio import Minio
 from thefuzz import fuzz
 from io import StringIO
 from time import sleep
+import random
 from my_secrets import (
     VALID_USERNAME_PASSWORD_PAIRS,
     DATAGOUV_API_KEY,
@@ -815,6 +816,8 @@ def refresh_certif(click):
     suggestions = [
         o for o in SP_or_CT if o not in certified
     ]
+    # to see more than just the first ones
+    random.shuffle(suggestions)
     suggestions_divs = []
     suggestions_data = []
 
