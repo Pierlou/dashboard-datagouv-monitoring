@@ -31,6 +31,7 @@ external_stylesheets = [
     'https://codepen.io/chriddyp/pen/bWLwgP.css'
 ]
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+app.title = 'Monitor - data.gouv.fr '
 bucket = "dataeng-open"
 folder = "dashboard/"
 support_file = "stats_support.csv"
@@ -880,11 +881,13 @@ def refresh_certif(click):
             "https://www.data.gouv.fr/api/1/"
             f"organizations/{list(i.keys())[0]}/",
             headers={'X-fields': 'name'}
-        ).json()['name']
-        issues_md += (
-            f"\n- [{name}](https://www.data.gouv.fr/fr/organizations/"
-            f"{list(i.keys())[0]}) : {list(i.values())[0]}"
         )
+        if name.ok:
+            name = name.json()['name']
+            issues_md += (
+                f"\n- [{name}](https://www.data.gouv.fr/fr/organizations/"
+                f"{list(i.keys())[0]}) : {list(i.values())[0]}"
+            )
 
     return (
         create_certif_graph(stats),
