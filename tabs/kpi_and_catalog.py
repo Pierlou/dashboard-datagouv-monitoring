@@ -159,14 +159,15 @@ tab_kpi_catalog = dcc.Tab(label="KPIs & catalogue", children=[
         style={"padding": "15px 0px 5px 0px"},
     ),
     dcc.Graph(id='catalog:resources_types'),
+    dcc.Store(id="kpi:datastore", data={}),
 ])
 
 
 # %% Callbacks
 @dash.callback(
-    Output("datastore", "data"),
+    Output("kpi:datastore", "data"),
     [Input('kpi:button_refresh', 'n_clicks')],
-    [State("datastore", "data")]
+    [State("kpi:datastore", "data")]
 )
 def refresh_kpis(click, datastore):
     kpis = pd.read_csv(
@@ -179,7 +180,7 @@ def refresh_kpis(click, datastore):
 
 @dash.callback(
     Output("kpi:dropdown", "options"),
-    [Input('datastore', 'data')],
+    [Input("kpi:datastore", 'data')],
 )
 def refresh_kpis_dropdown(datastore):
     kpis = pd.read_json(datastore['kpis'])
@@ -192,7 +193,7 @@ def refresh_kpis_dropdown(datastore):
 @dash.callback(
     Output("kpi:graph_kpi", "figure"),
     [Input('kpi:dropdown', 'value')],
-    [State("datastore", "data")]
+    [State("kpi:datastore", "data")]
 )
 def change_kpis_graph(indic, datastore):
     if not indic:

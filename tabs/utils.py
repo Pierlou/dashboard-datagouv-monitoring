@@ -2,6 +2,7 @@ from minio import Minio
 
 bucket = "dataeng-open"
 folder = "dashboard/"
+max_displayed_suggestions = 10
 
 client = Minio(
     "object.files.data.gouv.fr",
@@ -28,3 +29,7 @@ def get_latest_day_of_each_month(days_list):
         elif last_days[month] < day:
             last_days[month] = day
     return last_days
+
+
+def every_second_row_style(idx):
+    return {'background-color': 'lightgray' if idx % 2 == 0 else 'white'}

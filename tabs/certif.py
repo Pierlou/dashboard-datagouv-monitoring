@@ -18,13 +18,14 @@ from tabs.utils import (
     bucket,
     folder,
     client,
+    max_displayed_suggestions,
     get_file_content,
     get_latest_day_of_each_month,
+    every_second_row_style,
 )
 
 
 suggestions_file = "suggestions.csv"
-max_displayed_suggestions = 10
 
 tab_certif = dcc.Tab(label="Certification", children=[
     dbc.Row([
@@ -65,11 +66,8 @@ tab_certif = dcc.Tab(label="Certification", children=[
     # html.H6(id='tmp_output'),
     html.Div(id='certif:suggestions'),
     dbc.Row(id='certif:issues'),
+    dcc.Store(id='certif:datastore', data={}),
 ])
-
-
-def every_second_row_style(idx):
-    return {'background-color': 'lightgray' if idx % 2 == 0 else 'white'}
 
 
 def is_certified(badges):
