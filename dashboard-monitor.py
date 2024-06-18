@@ -28,6 +28,7 @@ from my_secrets import (
 from maindash import app
 from tabs.support import tab_support
 from tabs.kpi_and_catalog import tab_kpi_catalog
+from tabs.reuses import tab_reuses
 
 bucket = "dataeng-open"
 folder = "dashboard/"
@@ -167,17 +168,7 @@ app.layout = dbc.Container(
         dcc.Tabs([
             tab_support,
             tab_kpi_catalog,
-            dcc.Tab(label="Reuses", children=[
-                dbc.Row([
-                    dbc.Button(
-                        id='reuses:button_refresh',
-                        children='Rafraîchir les données'
-                    ),
-                    dcc.Graph(id='reuses:graph'),
-                ],
-                    style={"padding": "15px 0px 5px 0px"},
-                ),
-            ]),
+            tab_reuses,
             dcc.Tab(label="Certification", children=[
                 dbc.Row([
                     dbc.Col([
@@ -264,70 +255,6 @@ app.layout = dbc.Container(
     ])
 
 # %% Callbacks
-
-
-# Reuses
-@app.callback(
-    Output("reuses:graph", "figure"),
-    [Input('reuses:button_refresh', 'n_clicks')],
-)
-def refresh_reuses_graph(click):
-    hist = pd.read_csv(StringIO(
-        get_file_content(client, bucket, folder + 'stats_reuses_down.csv')
-    ))
-    hist = hist.loc[hist['Date'].isin(
-        get_latest_day_of_each_month(hist['Date']).values()
-    )]
-    hist['Date'] = hist['Date'].apply(lambda x: x[:7])
-    scatter = hist.copy(deep=True)
-    scatter['Taux'] = scatter.apply(
-        lambda df: round(
-            (df['404'] + df['Autre erreur']) / df['Total'] * 100,
-            1
-        ),
-        axis=1
-    )
-    hist = hist[['Date', '404', 'Autre erreur']]
-    fig = px.bar(
-        pd.melt(
-            hist,
-            id_vars=['Date'],
-            var_name='Type erreur',
-            value_name='Nombre'
-        ),
-        x='Date',
-        y='Nombre',
-        color='Type erreur',
-        title='Nombre de reuses qui renvoient une erreur',
-        text_auto=True,
-    )
-    fig.update_layout(
-        xaxis=dict(
-            tickformat="%b 20%y",
-            title="Mois",
-        )
-    )
-    fig.add_trace(go.Scatter(
-        x=scatter['Date'].to_list(),
-        y=scatter['Taux'].to_list(),
-        mode='lines',
-        name='Taux de reuses down',
-        yaxis='y2'
-    ))
-    fig.update_layout(
-        yaxis2=dict(
-            title='Taux de reuses down',
-            overlaying='y',
-            side='right',
-            range=[0, max(scatter['Taux']) * 1.1]
-        ),
-        legend=dict(
-            orientation='h',
-            y=1.1,
-            x=0
-        )
-    )
-    return fig
 
 
 # Certif
