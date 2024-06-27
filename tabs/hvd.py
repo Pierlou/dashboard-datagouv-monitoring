@@ -249,8 +249,8 @@ def display_objects_to_improve(param, object_type, store):
         {"name": ["data.gouv", "Organisation"], "id": "orga"},
         {"name": ["data.gouv", "tag HVD"], "id": "tag"},
         {"name": ["data.gouv", "URL"], "id": "url"},
-        {"name": ["Ouverture", "Ensemble_de_donnees"], "id": "ensemble"},
-        {"name": ["Ouverture", "Thematique"], "id": "thematique"},
+        {"name": ["ouverture", "Ensemble_de_donnees"], "id": "ensemble"},
+        {"name": ["ouverture", "Thematique"], "id": "thematique"},
     ]
     for c in columns:
         c.update({'type': 'text', 'presentation': 'markdown'})
