@@ -1,6 +1,5 @@
 from minio import Minio
 import requests
-from random import randint
 
 bucket = "dataeng-open"
 folder = "dashboard/"
