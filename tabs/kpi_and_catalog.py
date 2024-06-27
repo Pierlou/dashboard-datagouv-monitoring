@@ -11,8 +11,10 @@ import plotly.graph_objects as go
 import json
 
 from tabs.utils import (
+    DATASETS_QUALITY_METRICS,
     get_file_content,
     get_latest_day_of_each_month,
+    first_day_same_month,
 )
 
 
@@ -38,52 +40,7 @@ tab_kpi_catalog = dcc.Tab(label="KPIs & catalogue", children=[
             dcc.Dropdown(
                 id="catalog:dropdown_quality_indicator",
                 placeholder="Choisir un critère qualité...",
-                options=[
-                    {
-                        'label': 'Tous les fichiers sont disponibles',
-                        'value': 'all_resources_available',
-                    },
-                    {
-                        'label': 'Description des données renseignée',
-                        'value': 'dataset_description_quality',
-                    },
-                    {
-                        'label': 'Formats de fichiers standards',
-                        'value': 'has_open_format',
-                    },
-                    {
-                        'label': 'Au moins une ressource',
-                        'value': 'has_resources',
-                    },
-                    {
-                        'label': 'Licence renseignée',
-                        'value': 'license',
-                    },
-                    {
-                        'label': 'Fichiers documentés',
-                        'value': 'resources_documentation',
-                    },
-                    {
-                        'label': 'Score qualité global',
-                        'value': 'score',
-                    },
-                    {
-                        'label': 'Couverture spatiale renseignée',
-                        'value': 'spatial',
-                    },
-                    {
-                        'label': 'Couverture temporelle renseignée',
-                        'value': 'temporal_coverage',
-                    },
-                    {
-                        'label': 'Fréquence de mise à jour respectée',
-                        'value': 'update_fulfilled_in_time',
-                    },
-                    {
-                        'label': 'Fréquence de mise à jour renseignée',
-                        'value': 'update_frequency',
-                    },
-                ]
+                options=DATASETS_QUALITY_METRICS
             ),
         ]),
         dbc.Col([
@@ -244,11 +201,12 @@ def change_datasets_quality_graph(indic, param):
     for date in dates.values():
         data.append([date, datasets_quality[date][indic][param]])
     df = pd.DataFrame(data, columns=('date', 'moyenne'))
-    fig = px.bar(df, x="date", y="moyenne", text_auto=True)
     volumes = [[
-        d,
+        first_day_same_month(d),
         datasets_quality[d]['count'][indic]
-    ] for d in datasets_quality]
+    ] for d in df['date'].unique()]
+    df['date'] = df['date'].apply(first_day_same_month)
+    fig = px.bar(df, x="date", y="moyenne", text_auto=True)
     fig.add_trace(go.Scatter(
         x=[v[0] for v in volumes],
         y=[v[1] for v in volumes],
@@ -292,11 +250,14 @@ def change_resources_types_graph(indic, percent_threshold):
     resources_stats = json.loads(
         get_file_content("resources_stats.json")
     )
+    # with open("resources_stats.json", "r") as f:
+    #     resources_stats = json.load(f)
     dates = get_latest_day_of_each_month(resources_stats.keys())
     for date in dates.values():
         for t in resources_stats[date][indic]:
             data.append([date, t, resources_stats[date][indic][t]])
     df = pd.DataFrame(data, columns=('date', 'format', 'count'))
+    df['date'] = df['date'].apply(first_day_same_month)
     threshold = percent_threshold / 100 * df.loc[
         df['date'] == max(df['date']), 'count'
     ].sum()
