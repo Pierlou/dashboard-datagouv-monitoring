@@ -35,10 +35,20 @@ categories = {
     slugify(cat): cat
     for cat in set(k['fields']['Thematique'] for k in r['records'])
 }
-df_ouverture = pd.DataFrame(
-    [k['fields'] for k in r['records']],
-)[['url', 'Ensemble_de_donnees', 'Thematique']]
-
+df_ouverture = pd.DataFrame([k['fields'] for k in r['records']])
+dfs = []
+for _type in ['Telechargement', 'API']:
+    tmp = df_ouverture[
+        ['Titre', 'Ensemble_de_donnees', 'Thematique'] +
+        [c for c in df_ouverture.columns if c.endswith(_type)]
+    ]
+    tmp['type'] = 'dataservices' if _type == 'API' else 'datasets'
+    tmp.rename(
+        {c: c.replace(f'_{_type}', '') for c in df_ouverture.columns if c.endswith(_type)},
+        axis=1, inplace=True
+    )
+    dfs.append(tmp)
+df_ouverture = pd.concat(dfs)[['URL', 'Ensemble_de_donnees', 'Thematique']]
 
 tab_hvd = dcc.Tab(label="HVD", children=[
     html.H5('Qualité des HVD'),
@@ -122,11 +132,9 @@ def change_datasets_quality_graph(param, object_type):
         raise PreventUpdate
 
     if object_type == 'datasets':
-        # datasets_quality = json.loads(
-        #     get_file_content("datasets_quality.json")
-        # )
-        with open("datasets_quality.json", "r") as f:
-            datasets_quality = json.load(f)
+        datasets_quality = json.loads(
+            get_file_content("datasets_quality.json")
+        )
         dates = get_latest_day_of_each_month(datasets_quality.keys())
         data = []
         for date in dates.values():
@@ -204,7 +212,9 @@ def change_datasets_quality_graph(param, object_type):
 def display_objects_to_improve(param, object_type, store):
     if not param or not object_type:
         raise PreventUpdate
-    if store["progression"] == 1:
+    if store.get("progression") == 1:
+        return None
+    if param == "score":
         return None
     r = get_all_from_api_query(
         f'https://www.data.gouv.fr/api/1/{object_type}/?tag=hvd',
@@ -226,14 +236,14 @@ def display_objects_to_improve(param, object_type, store):
         if param in _obj and not _obj[param]:
             url = f'https://www.data.gouv.fr/fr/{object_type}/{k["slug"]}/'
             missing.append({
-                'url': url,
+                'URL': url,
                 'Titre': k['title'],
                 'Organisation': k['organization']['name'],
                 'tag HVD': ', '.join([
                     categories[t] for t in k['tags']
                     if t in categories
                 ]),
-                'URL': f"[{url}]({url})",
+                'URL data.gouv': f"[{url}]({url})",
             })
     if not missing:
         return [html.H6("Un problème est survenu lors de la récupération des données")]
@@ -241,14 +251,14 @@ def display_objects_to_improve(param, object_type, store):
     merged = pd.merge(
         missing,
         df_ouverture,
-        on='url',
+        on='URL',
         how='left',
-    ).drop('url', axis=1)
+    ).drop('URL', axis=1)
     columns = [
         {"name": ["data.gouv", "Titre"], "id": "titre"},
         {"name": ["data.gouv", "Organisation"], "id": "orga"},
         {"name": ["data.gouv", "tag HVD"], "id": "tag"},
-        {"name": ["data.gouv", "URL"], "id": "url"},
+        {"name": ["data.gouv", "URL data.gouv"], "id": "url"},
         {"name": ["ouverture", "Ensemble_de_donnees"], "id": "ensemble"},
         {"name": ["ouverture", "Thematique"], "id": "thematique"},
     ]
@@ -287,11 +297,9 @@ def display_objects_to_improve(param, object_type, store):
 )
 def change_resources_types_graph(percent_threshold):
     data = []
-    # resources_stats = json.loads(
-    #     get_file_content("resources_stats.json")
-    # )
-    with open("resources_stats.json", "r") as f:
-        resources_stats = json.load(f)
+    resources_stats = json.loads(
+        get_file_content("resources_stats.json")
+    )
     dates = get_latest_day_of_each_month(resources_stats.keys())
     for date in dates.values():
         if resources_stats[date].get('hvd'):
