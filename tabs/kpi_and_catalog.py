@@ -250,8 +250,6 @@ def change_resources_types_graph(indic, percent_threshold):
     resources_stats = json.loads(
         get_file_content("resources_stats.json")
     )
-    # with open("resources_stats.json", "r") as f:
-    #     resources_stats = json.load(f)
     dates = get_latest_day_of_each_month(resources_stats.keys())
     for date in dates.values():
         for t in resources_stats[date][indic]:
