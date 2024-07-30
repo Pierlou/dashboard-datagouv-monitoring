@@ -233,7 +233,7 @@ def display_objects_to_improve(param, object_type, store):
         _obj = k
         if object_type == "datasets":
             _obj = k['quality']
-        if param in _obj and not _obj[param]:
+        if (param in _obj and not _obj[param]) or (param not in _obj):
             url = f'https://www.data.gouv.fr/fr/{object_type}/{k["slug"]}/'
             missing.append({
                 'URL': url,
