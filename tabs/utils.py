@@ -1,5 +1,6 @@
 from minio import Minio
 import requests
+from my_secrets import DATAGOUV_API_KEY
 
 bucket = "dataeng-open"
 folder = "dashboard/"
@@ -51,7 +52,8 @@ def get_all_from_api_query(
         for k in separated_keys.split('.'):
             result = result[k]
         return result
-    headers = {}
+    # will need this to access reports endpoint
+    headers = {"X-API-KEY": DATAGOUV_API_KEY}
     if mask is not None:
         headers["X-fields"] = mask + f",{next_page}"
     while True:
