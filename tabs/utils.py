@@ -83,6 +83,19 @@ def get_all_from_api_query(
             yield data
 
 
+def add_total_top_bar(fig, df, x, y):
+    totals = df.groupby(x)[y].sum().reset_index()
+    for _, row in totals.iterrows():
+        fig.add_annotation(
+            x=row[x],
+            y=row[y],
+            text=str(row[y]),
+            showarrow=False,
+            font=dict(size=12, color='black'),
+            yshift=10,
+        )
+
+
 DATASETS_QUALITY_METRICS = [
     {
         'label': 'Tous les fichiers sont disponibles',

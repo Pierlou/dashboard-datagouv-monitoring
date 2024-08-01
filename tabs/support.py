@@ -9,7 +9,10 @@ from io import StringIO
 import plotly.express as px
 import plotly.graph_objects as go
 
-from tabs.utils import get_file_content
+from tabs.utils import (
+    get_file_content,
+    add_total_top_bar,
+)
 
 support_file = "stats_support.csv"
 
@@ -63,6 +66,7 @@ def create_volumes_graph(stats):
         color="Page",
         text_auto=True,
     )
+    add_total_top_bar(fig=fig, df=volumes, x="Date", y="Nombre de tickets")
     fig.add_trace(go.Scatter(
         x=stats.columns,
         y=stats.loc['Page support'],

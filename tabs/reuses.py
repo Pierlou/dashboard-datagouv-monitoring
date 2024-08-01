@@ -11,6 +11,7 @@ from io import StringIO
 from tabs.utils import (
     get_file_content,
     get_latest_day_of_each_month,
+    add_total_top_bar,
 )
 
 
@@ -49,19 +50,21 @@ def refresh_reuses_graph(click):
         axis=1
     )
     hist = hist[['Date', '404', 'Autre erreur']]
+    volumes = pd.melt(
+        hist,
+        id_vars=['Date'],
+        var_name='Type erreur',
+        value_name='Nombre'
+    )
     fig = px.bar(
-        pd.melt(
-            hist,
-            id_vars=['Date'],
-            var_name='Type erreur',
-            value_name='Nombre'
-        ),
+        volumes,
         x='Date',
         y='Nombre',
         color='Type erreur',
         title='Nombre de reuses qui renvoient une erreur',
         text_auto=True,
     )
+    add_total_top_bar(fig=fig, df=volumes, x="Date", y="Nombre")
     fig.update_layout(
         xaxis=dict(
             tickformat="%b 20%y",

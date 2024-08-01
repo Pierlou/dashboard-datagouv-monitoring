@@ -9,6 +9,7 @@ import plotly.express as px
 
 from tabs.utils import (
     get_all_from_api_query,
+    add_total_top_bar,
 )
 
 reasons = {
@@ -130,6 +131,7 @@ def refresh_reports_graph(subject_class, reason):
         text_auto=True,
         title=title,
     )
+    add_total_top_bar(fig=fig, df=volumes, x="Mois", y="Volume")
     fig.update_layout(
         xaxis=dict(
             title='Mois',
