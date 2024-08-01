@@ -14,6 +14,7 @@ from tabs.kpi_and_catalog import tab_kpi_catalog
 from tabs.reuses import tab_reuses
 from tabs.certif import tab_certif
 from tabs.hvd import tab_hvd
+from tabs.reports import tab_reports
 # from tabs.siret import tab_siret
 
 auth = dash_auth.BasicAuth(
@@ -40,6 +41,7 @@ app.layout = dbc.Container(
             tab_reuses,
             tab_certif,
             tab_hvd,
+            tab_reports,
             # tab_siret,
         ]),
     ]
