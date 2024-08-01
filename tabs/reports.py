@@ -6,6 +6,7 @@ from dash import html
 
 import pandas as pd
 import plotly.express as px
+from datetime import datetime
 
 from tabs.utils import (
     get_all_from_api_query,
@@ -91,6 +92,8 @@ def refresh_reports_graph(subject_class, reason):
             })
     if not data:
         return html.H5('Aucun signalement ne correspond à ces critères.')
+
+    # graph
     df = pd.DataFrame(data)[["month", "reason", "subject_class"]]
     df['reason'] = df['reason'].apply(lambda x: reasons[x])
     df['subject_class'] = df['subject_class'].apply(lambda x: subjects[x])
@@ -140,4 +143,21 @@ def refresh_reports_graph(subject_class, reason):
             tickformat="%b 20%y",
         ),
     )
-    return [dcc.Graph(figure=fig)]
+
+    # average time to delete
+    delays = pd.DataFrame(data)[["reported_at", "subject_deleted_at"]]
+    delays = delays.loc[~(delays["subject_deleted_at"].isnull())]
+    delay_div = html.Div()
+    if len(delays):
+        delays['delay'] = delays.apply(
+            lambda x: (
+                datetime.fromisoformat(x['subject_deleted_at'])
+                - datetime.fromisoformat(x['reported_at'])
+            ),
+            axis=1
+        )
+        delay_div = html.H5(
+            "Délai moyen avant suppression des objets en question : "
+            f"{str(delays['delay'].mean()).replace('days', 'jours')}"
+        )
+    return [delay_div, dcc.Graph(figure=fig)]
