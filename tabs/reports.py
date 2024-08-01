@@ -24,6 +24,9 @@ subjects = {
     'Dataset': 'Jeu de données',
     'Organization': 'Organisation',
     'Reuse': 'Réutilisation',
+    'Reuse': 'Réutilisation',
+    'Dataservie': 'API',
+    'Discussion': 'Discussion',
 }
 
 tab_reports = dcc.Tab(label="Signalements", children=[
