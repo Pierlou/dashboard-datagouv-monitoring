@@ -40,13 +40,15 @@ tab_kpi_catalog = dcc.Tab(label="KPIs & catalogue", children=[
             dcc.Dropdown(
                 id="catalog:dropdown_quality_indicator",
                 placeholder="Choisir un critère qualité...",
-                options=DATASETS_QUALITY_METRICS
+                options=DATASETS_QUALITY_METRICS,
+                value=DATASETS_QUALITY_METRICS[0]['value'],
             ),
         ]),
         dbc.Col([
             dcc.Dropdown(
                 id="catalog:dropdown_datasets_types",
                 placeholder="Choisir le scope...",
+                value='all',
                 options=[
                     {
                         'label': 'Tous les jeux de données',
@@ -72,6 +74,7 @@ tab_kpi_catalog = dcc.Tab(label="KPIs & catalogue", children=[
         dbc.Col([
             dcc.Dropdown(
                 id="catalog:dropdown_resources_types",
+                value="all",
                 options=[
                     {
                         'label': 'Tous les types de ressources',
@@ -136,7 +139,10 @@ def refresh_kpis(click, datastore):
 
 
 @dash.callback(
-    Output("kpi:dropdown", "options"),
+    [
+        Output("kpi:dropdown", "options"),
+        Output("kpi:dropdown", "value"),
+    ],
     [Input("kpi:datastore", 'data')],
 )
 def refresh_kpis_dropdown(datastore):
@@ -144,7 +150,7 @@ def refresh_kpis_dropdown(datastore):
     options = [
         {'label': k, 'value': k} for k in kpis['indicateur'].unique()
     ]
-    return options
+    return options, options[0]['value']
 
 
 @dash.callback(
