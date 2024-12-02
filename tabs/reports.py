@@ -25,7 +25,7 @@ subjects = {
     'Dataset': 'Jeu de données',
     'Organization': 'Organisation',
     'Reuse': 'Réutilisation',
-    'Dataservie': 'API',
+    'Dataservice': 'API',
     'Discussion': 'Discussion',
 }
 
@@ -158,6 +158,6 @@ def refresh_reports_graph(subject_class, reason):
         )
         delay_div = html.H5(
             "Délai moyen avant suppression des objets en question : "
-            f"{str(delays['delay'].mean()).replace('days', 'jours')}"
+            f"{str(delays['delay'].mean()).replace('days', 'jours').split('.')[0]}"
         )
     return [delay_div, dcc.Graph(figure=fig)]
