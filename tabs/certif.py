@@ -170,28 +170,26 @@ def refresh_certif(click):
         params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
             headers={
-                'X-fields': 'name,created_at,badges,members{user{uri}},business_number_id',
+                'X-fields': 'name,created_at,badges,members{user{email}},business_number_id',
+                "X-API-KEY": DATAGOUV_API_KEY,
             }
         ).json()
         # to prevent showing orgas that have been certified since last DAG run
         if 'badges' not in params or is_certified(params['badges']):
             continue
-        emails = []
-        for user in params['members']:
-            r = session.get(
-                user['user']['uri'],
-                headers={"X-API-KEY": DATAGOUV_API_KEY},
-            ).json()
-            emails.append(r['email'])
+        current_badges = [b["kind"] for b in params['badges']]
+        emails = [u["user"]["email"] for u in params["members"]]
         valid_domains = get_valid_domains(params["business_number_id"])
         present_domains = []
         for domain in valid_domains:
-            if any(email.endswith(domain) for email in emails):
+            if any(email.endswith("@" + domain) for email in emails):
                 present_domains.append(domain)
         md = (
             f"- [{params['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
         )
+        if current_badges:
+            md += f", badge actuel : `{', '.join(current_badges)}`"
         if not emails:
             md += '\n   - Pas de membres dans cette organisation'
         for email in emails:
