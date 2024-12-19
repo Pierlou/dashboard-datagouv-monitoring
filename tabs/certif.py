@@ -28,17 +28,6 @@ from tabs.utils import (
 suggestions_file = "suggestions.csv"
 
 
-def get_valid_domains(siret):
-    if not siret:
-        return set()
-    r = requests.get(
-        "https://tabular-api.data.gouv.fr/api/resources/4208f064-e655-4bad-93c9-9a3977f3f8cc/"
-        f"data/?siret__exact={siret}&page_size=50"
-    )
-    r.raise_for_status()
-    return set(d["domain_email"] for d in r.json()["data"])
-
-
 tab_certif = dcc.Tab(label="Certification", children=[
     dbc.Row([
         dbc.Col([
@@ -86,6 +75,17 @@ def is_certified(badges):
         if b['kind'] == 'certified':
             return True
     return False
+
+
+def get_valid_domains(siret):
+    if not siret:
+        return set()
+    r = requests.get(
+        "https://tabular-api.data.gouv.fr/api/resources/4208f064-e655-4bad-93c9-9a3977f3f8cc/"
+        f"data/?siret__exact={siret}&page_size=50"
+    )
+    r.raise_for_status()
+    return set(d["domain_email"] for d in r.json()["data"])
 
 
 def create_certif_graph(stats):
