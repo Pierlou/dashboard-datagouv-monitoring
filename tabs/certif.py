@@ -27,6 +27,18 @@ from tabs.utils import (
 
 suggestions_file = "suggestions.csv"
 
+
+def get_valid_domains(siret):
+    if not siret:
+        return set()
+    r = requests.get(
+        "https://tabular-api.data.gouv.fr/api/resources/4208f064-e655-4bad-93c9-9a3977f3f8cc/"
+        f"data/?siret__exact={siret}&page_size=50"
+    )
+    r.raise_for_status()
+    return set(d["domain_email"] for d in r.json()["data"])
+
+
 tab_certif = dcc.Tab(label="Certification", children=[
     dbc.Row([
         dbc.Col([
@@ -63,7 +75,6 @@ tab_certif = dcc.Tab(label="Certification", children=[
             ]),
         ]),
     ]),
-    # html.H6(id='tmp_output'),
     html.Div(id='certif:suggestions'),
     dbc.Row(id='certif:issues'),
     dcc.Store(id='certif:datastore', data={}),
@@ -159,7 +170,7 @@ def refresh_certif(click):
         params = session.get(
             f"https://www.data.gouv.fr/api/1/organizations/{s}/",
             headers={
-                'X-fields': 'name,created_at,badges,members{user{uri}}',
+                'X-fields': 'name,created_at,badges,members{user{uri}},business_number_id',
             }
         ).json()
         # to prevent showing orgas that have been certified since last DAG run
@@ -172,6 +183,11 @@ def refresh_certif(click):
                 headers={"X-API-KEY": DATAGOUV_API_KEY},
             ).json()
             emails.append(r['email'])
+        valid_domains = get_valid_domains(params["business_number_id"])
+        present_domains = []
+        for domain in valid_domains:
+            if any(email.endswith(domain) for email in emails):
+                present_domains.append(domain)
         md = (
             f"- [{params['name']}]"
             f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
@@ -180,6 +196,8 @@ def refresh_certif(click):
             md += '\n   - Pas de membres dans cette organisation'
         for email in emails:
             md += '\n   - ' + email
+        if present_domains:
+            md += f"\n\n✅ Emails vérifiés: {', '.join(present_domains)}"
         suggestions_divs += [dbc.Row(children=[
             dbc.Col(children=[dcc.Markdown(md)]),
             dbc.Col(children=[html.Div(dbc.Button(
