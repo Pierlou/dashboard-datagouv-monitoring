@@ -88,6 +88,39 @@ def get_valid_domains(siret):
     return set(d["domain_email"] for d in r.json()["data"])
 
 
+def guess_valid_badge(siret):
+    r = requests.get(
+        "https://recherche-entreprises.api.gouv.fr/search?q=" + siret,
+    ).json()["results"]
+    if len(r) > 1:
+        return None, "Plusieurs résultats pour ce SIRET : " + siret
+    elif len(r) == 0:
+        return None, "Aucun résultat pour ce SIRET : " + siret
+    complements = r[0]['complements']
+    if complements['collectivite_territoriale'] and complements['est_service_public']:
+        return "local-authority", "Reconnu comme `SP` et `ColTer` => badge `ColTer`"
+    elif complements['collectivite_territoriale']:
+        return "local-authority", "Reconnu comme `collectivité territoriale`"
+    elif complements['est_service_public']:
+        return "public-service", "Reconnu comme `service public`"
+    return None, "Ce message ne devrait jamais s'afficher, siret : " + siret
+
+
+def certify_button(idx, orga_id, badge, current_badges):
+    return dbc.Button(
+        id={
+            'type': 'certify',
+            'index': f'certif:button_{idx}_{orga_id}_{badge}_{",".join(current_badges)}',
+        },
+        children=(
+            f'Certifier cette organisation et appliquer le badge {badge}'
+            if badge else "Pas d'action possible"
+        ),
+        color="info" if badge == "public-service" else "warning",
+        disabled=badge is None,
+    )
+
+
 def create_certif_graph(stats):
     data = {
         'Mois': stats.keys(),
@@ -162,13 +195,13 @@ def refresh_certif(click):
     suggestions_divs = []
     suggestions_data = []
 
-    for idx, s in enumerate(suggestions):
+    for idx, orga_id in enumerate(suggestions):
         # for performance purposes, only displaying X suggestions
         # refresh when work is done to certify more
         if len(suggestions_divs) == max_displayed_suggestions:
             break
         params = session.get(
-            f"https://www.data.gouv.fr/api/1/organizations/{s}/",
+            f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
             headers={
                 'X-fields': 'name,created_at,badges,members{user{email}},business_number_id',
                 "X-API-KEY": DATAGOUV_API_KEY,
@@ -180,13 +213,14 @@ def refresh_certif(click):
         current_badges = [b["kind"] for b in params['badges']]
         emails = [u["user"]["email"] for u in params["members"]]
         valid_domains = get_valid_domains(params["business_number_id"])
+        badge, text = guess_valid_badge(params["business_number_id"])
         present_domains = []
         for domain in valid_domains:
             if any(email.endswith("@" + domain) for email in emails):
                 present_domains.append(domain)
         md = (
             f"- [{params['name']}]"
-            f"(https://www.data.gouv.fr/fr/organizations/{s}/)"
+            f"(https://www.data.gouv.fr/fr/organizations/{orga_id}/)"
         )
         if current_badges:
             md += f", badge actuel : `{', '.join(current_badges)}`"
@@ -198,23 +232,20 @@ def refresh_certif(click):
             md += f"\n\n✅ Emails vérifiés: {', '.join(present_domains)}"
         suggestions_divs += [dbc.Row(children=[
             dbc.Col(children=[dcc.Markdown(md)]),
-            dbc.Col(children=[html.Div(dbc.Button(
-                id={
-                    'type': 'certify',
-                    'index': f'certif:button_{len(suggestions_divs)}_{s}'
-                },
-                children='Certifier cette organisation',
-                color="info",
-            ),
-                style={"padding": "10px 0px 0px 0px"},
-            )]),
+            dbc.Col(children=[
+                html.Div(
+                    certify_button(idx, orga_id, badge, current_badges),
+                    style={"padding": "10px 0px 0px 0px"},
+                ),
+                dcc.Markdown(text)
+            ]),
         ],
-            style=every_second_row_style(len(suggestions_divs)),
+            style=every_second_row_style(idx),
         )]
         suggestions_data.append({
             'name': params['name'],
             'created_at': params['created_at'][:10],
-            'url': f'https://www.data.gouv.fr/fr/organizations/{s}/',
+            'url': f'https://www.data.gouv.fr/fr/organizations/{orga_id}/',
             'emails': '; '.join(emails),
         })
 
@@ -254,18 +285,22 @@ def update_after_certif(*args):
     if all([a is None for a in args[0]]):
         raise PreventUpdate
     # par construction, don't worry it works
-    idx, orga_id = eval(
+    idx, orga_id, badge, current_badges = eval(
         dash.ctx.triggered[0]["prop_id"].split(".")[0]
-    )['index'].split('_')[-2:]
+    )['index'].split('_')[1:]
     idx = int(idx)
-    # r = requests.get(
-    #     f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
-    #     headers={'X-fields': 'name'},
-    # )
-    for badge in ["public-service", "certified"]:
+    current_badges = current_badges.split(",")
+    to_add = [b for b in [badge, "certified"] if b not in current_badges]
+    to_remove = [b for b in current_badges if b not in [badge, "certified"]]
+    for b in to_remove:
+        requests.delete(
+            f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/badges/{b}/",
+            headers={"X-API-KEY": DATAGOUV_API_KEY},
+        )
+    for b in to_add:
         r = requests.post(
             f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/badges/",
-            json={"kind": badge},
+            json={"kind": b},
             headers={"X-API-KEY": DATAGOUV_API_KEY},
         )
         if not r.ok:
@@ -278,15 +313,9 @@ def update_after_certif(*args):
             )
             return patched_children
 
-    r = requests.get(
-        f"https://www.data.gouv.fr/api/1/organizations/{orga_id}/",
-        headers={'X-fields': 'name'},
-    ).json()
     patched_children[idx] = dbc.Row(
         children=[dcc.Markdown(children=[
-            f"- [{r['name']}]"
-            f"(https://www.data.gouv.fr/fr/organizations/{orga_id}/)"
-            " : certifiée ☑"
+            f"[Organisation](https://www.data.gouv.fr/fr/organizations/{orga_id}/) certifiée ☑️"
         ])],
         style={'background-color': '#90ee90'},
     )
