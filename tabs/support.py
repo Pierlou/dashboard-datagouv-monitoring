@@ -44,7 +44,9 @@ tab_support = dcc.Tab(label="Support", children=[
 def create_volumes_graph(stats):
     volumes = stats.copy()
     volumes.loc['Autre ticket'] = (
-        volumes.loc['Ouverture de ticket'] - volumes.loc['Ticket hors-sujet']
+        volumes.loc['Ouverture de ticket']
+        - volumes.loc['Ticket hors-sujet']
+        - volumes.loc['Ticket spam']
     )
     volumes = volumes.T
     volumes.index.names = ['Date']
@@ -56,7 +58,7 @@ def create_volumes_graph(stats):
         value_name='Visites',
     )
     volumes = volumes.loc[
-        volumes['Page'].isin(['Autre ticket', 'Ticket hors-sujet'])
+        volumes['Page'].isin(['Autre ticket', 'Ticket hors-sujet', 'Ticket spam'])
     ].sort_values('Page')
     volumes.rename({"Visites": "Nombre de tickets"}, axis=1, inplace=True)
     fig = px.bar(
@@ -92,7 +94,7 @@ def create_volumes_graph(stats):
 
 def create_taux_graph(stats):
     conversions = pd.DataFrame(columns=stats.columns)
-    for idx, level in enumerate(stats.index[:-1]):
+    for idx, level in enumerate(stats.index[:-2]):
         conversions.loc[f"{level} => {stats.index[idx+1]}"] = (
             round(stats.loc[stats.index[idx + 1]] / stats.loc[level], 3) * 100
         )
@@ -122,7 +124,7 @@ def create_taux_graph(stats):
     ],
     [Input('support:button_refresh', 'n_clicks')]
 )
-def update_dropdown_options(click):
+def update_graphs(click):
     stats = pd.read_csv(
         StringIO(
             get_file_content(support_file)
