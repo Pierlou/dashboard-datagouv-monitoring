@@ -34,6 +34,10 @@ tab_support = dcc.Tab(label="Support", children=[
             ])
         ]),
         dcc.Graph(id="support:graph_taux"),
+        html.H6(
+            "NB: les spams sont supprimés automatiquement par Crisp après 2 mois, "
+            "ils ne sont donc plus visibles ensuite"
+        ),
         dcc.Graph(id="support:graph_volumes"),
     ],
         style={"padding": "15px 0px 5px 0px"},
@@ -98,6 +102,9 @@ def create_taux_graph(stats):
         conversions.loc[f"{level} => {stats.index[idx+1]}"] = (
             round(stats.loc[stats.index[idx + 1]] / stats.loc[level], 3) * 100
         )
+    # not all tickets come from the page, we can end up with absurd values, so safeguard
+    for col in conversions.columns:
+        conversions[col] = conversions[col].apply(lambda x: min(x, 150))
     transposed = conversions.T
     transposed.index.names = ['Date']
     transposed.reset_index(inplace=True)

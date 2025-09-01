@@ -29,7 +29,7 @@ def slugify(s):
     return unidecode(s.lower().replace(" ", "-").replace("'", "-"))
 
 
-ouverture_hvd_api = 'https://grist.incubateur.net/api/docs/eJxok2H2va3E/tables/Hvd/records'
+ouverture_hvd_api = "https://grist.numerique.gouv.fr/api/docs/eJxok2H2va3E/tables/Hvd/records"
 r = requests.get(ouverture_hvd_api).json()
 categories = {
     slugify(cat): cat
