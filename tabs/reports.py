@@ -22,55 +22,65 @@ reasons = {
     "spam": "Spam",
 }
 subjects = {
-    'Dataset': 'Jeu de données',
-    'Organization': 'Organisation',
-    'Reuse': 'Réutilisation',
-    'Dataservice': 'API',
-    'Discussion': 'Discussion',
+    "Dataset": "Jeu de données",
+    "Organization": "Organisation",
+    "Reuse": "Réutilisation",
+    "Dataservice": "API",
+    "Discussion": "Discussion",
 }
 
-tab_reports = dcc.Tab(label="Signalements", children=[
-    dbc.Row([
-        dbc.Col([
-            dcc.Dropdown(
-                id="reports:dropdown_subject_class",
-                placeholder="Choisir un type de données...",
-                # can't use None as a default value
-                value="all",
-                options=[
-                    {
-                        'label': 'Tous les objets',
-                        'value': "all",
-                    },
-                ] + [{'label': v, 'value': k} for k, v in subjects.items()]
-            ),
-        ]),
-        dbc.Col([
-            dcc.Dropdown(
-                id="reports:dropdown_reason",
-                placeholder="Choisir un motif de signalement...",
-                value="all",
-                options=[
-                    {
-                        'label': 'Tous les motifs',
-                        'value': "all",
-                    },
-                ] + [{'label': v, 'value': k} for k, v in reasons.items()]
-            ),
-        ]),
+tab_reports = dcc.Tab(
+    label="Signalements",
+    children=[
+        dbc.Row(
+            [
+                dbc.Col(
+                    [
+                        dcc.Dropdown(
+                            id="reports:dropdown_subject_class",
+                            placeholder="Choisir un type de données...",
+                            # can't use None as a default value
+                            value="all",
+                            options=[
+                                {
+                                    "label": "Tous les objets",
+                                    "value": "all",
+                                },
+                            ]
+                            + [{"label": v, "value": k} for k, v in subjects.items()],
+                        ),
+                    ]
+                ),
+                dbc.Col(
+                    [
+                        dcc.Dropdown(
+                            id="reports:dropdown_reason",
+                            placeholder="Choisir un motif de signalement...",
+                            value="all",
+                            options=[
+                                {
+                                    "label": "Tous les motifs",
+                                    "value": "all",
+                                },
+                            ]
+                            + [{"label": v, "value": k} for k, v in reasons.items()],
+                        ),
+                    ]
+                ),
+            ],
+            style={"padding": "15px 0px 5px 0px"},
+        ),
+        html.Div(id="reports:graph"),
     ],
-        style={"padding": "15px 0px 5px 0px"},
-    ),
-    html.Div(id='reports:graph'),
-])
+)
 
 
 # %% Callbacks
 @dash.callback(
     Output("reports:graph", "children"),
     [
-        Input("reports:dropdown_subject_class", 'value'),
-        Input("reports:dropdown_reason", 'value'),
+        Input("reports:dropdown_subject_class", "value"),
+        Input("reports:dropdown_reason", "value"),
     ],
 )
 def refresh_reports_graph(subject_class, reason):
@@ -79,54 +89,63 @@ def refresh_reports_graph(subject_class, reason):
     reports = get_all_from_api_query("https://www.data.gouv.fr/api/1/reports/")
     data = []
     for r in reports:
-        if (
-            (subject_class == "all" or r['subject']['class'] == subject_class)
-            and (reason == "all" or r['reason'] == reason)
+        if (subject_class == "all" or r["subject"]["class"] == subject_class) and (
+            reason == "all" or r["reason"] == reason
         ):
-            data.append({
-                "month": r['reported_at'][:8] + "01",
-                "reason": r['reason'],
-                "subject_class": r['subject']['class'],
-                "reported_at": r['reported_at'],
-                "subject_deleted_at": r['subject_deleted_at'],
-            })
+            data.append(
+                {
+                    "month": r["reported_at"][:8] + "01",
+                    "reason": r["reason"],
+                    "subject_class": r["subject"]["class"],
+                    "reported_at": r["reported_at"],
+                    "subject_deleted_at": r["subject_deleted_at"],
+                }
+            )
     if not data:
-        return html.H5('Aucun signalement ne correspond à ces critères.')
+        return html.H5("Aucun signalement ne correspond à ces critères.")
 
     # graph
     df = pd.DataFrame(data)[["month", "reason", "subject_class"]]
-    df['reason'] = df['reason'].apply(lambda x: reasons[x])
-    df['subject_class'] = df['subject_class'].apply(lambda x: subjects[x])
+    df["reason"] = df["reason"].apply(lambda x: reasons[x])
+    df["subject_class"] = df["subject_class"].apply(lambda x: subjects[x])
     color = None
     if reason != "all" and subject_class != "all":
-        volumes = df['month'].value_counts().reset_index().rename(
-            {'index': 'Mois', 'month': 'Volume'},
-            axis=1
+        volumes = (
+            df["month"]
+            .value_counts()
+            .reset_index()
+            .rename({"index": "Mois", "month": "Volume"}, axis=1)
         )
         title = (
-            f'Signalements par mois pour le motif `{reason}`'
-            f' et les {subject_class.lower()}s'
+            f"Signalements par mois pour le motif `{reason}`"
+            f" et les {subject_class.lower()}s"
         )
 
     elif reason == "all":
         color = "Motif"
-        volumes = df[['month', 'reason']].value_counts().reset_index().rename(
-            {'month': 'Mois', 'reason': color, 'count': 'Volume'},
-            axis=1
+        volumes = (
+            df[["month", "reason"]]
+            .value_counts()
+            .reset_index()
+            .rename({"month": "Mois", "reason": color, "count": "Volume"}, axis=1)
         )
-        title = 'Signalements par mois pour tous les motifs et '
+        title = "Signalements par mois pour tous les motifs et "
         if subject_class == "all":
-            title += 'tous les objets'
+            title += "tous les objets"
         else:
-            title += f'les {subject_class.lower()}s'
+            title += f"les {subject_class.lower()}s"
 
     else:
         color = "Objet"
-        volumes = df[['month', 'subject_class']].value_counts().reset_index().rename(
-            {'month': 'Mois', 'subject_class': color, 'count': 'Volume'},
-            axis=1
+        volumes = (
+            df[["month", "subject_class"]]
+            .value_counts()
+            .reset_index()
+            .rename(
+                {"month": "Mois", "subject_class": color, "count": "Volume"}, axis=1
+            )
         )
-        title = f'Signalements par mois pour le motif `{reason}` et tous les objets'
+        title = f"Signalements par mois pour le motif `{reason}` et tous les objets"
 
     fig = px.bar(
         volumes,
@@ -139,7 +158,7 @@ def refresh_reports_graph(subject_class, reason):
     add_total_top_bar(fig=fig, df=volumes, x="Mois", y="Volume")
     fig.update_layout(
         xaxis=dict(
-            title='Mois',
+            title="Mois",
             tickformat="%b 20%y",
         ),
     )
@@ -149,12 +168,12 @@ def refresh_reports_graph(subject_class, reason):
     delays = delays.loc[~(delays["subject_deleted_at"].isnull())]
     delay_div = html.Div()
     if len(delays):
-        delays['delay'] = delays.apply(
+        delays["delay"] = delays.apply(
             lambda x: (
-                datetime.fromisoformat(x['subject_deleted_at'])
-                - datetime.fromisoformat(x['reported_at'])
+                datetime.fromisoformat(x["subject_deleted_at"])
+                - datetime.fromisoformat(x["reported_at"])
             ),
-            axis=1
+            axis=1,
         )
         delay_div = html.H5(
             "Délai moyen avant suppression des objets en question : "
