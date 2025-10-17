@@ -16,6 +16,7 @@ def get_file_content(
     file_path,
     client=client,
     bucket=bucket,
+    folder=folder,
     encoding="utf-8",
 ):
     r = client.get_object(bucket, folder + file_path)

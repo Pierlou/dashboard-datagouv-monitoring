@@ -1,3 +1,4 @@
+from doctest import DocFileSuite
 import dash
 from dash import dcc
 from dash import html
@@ -6,6 +7,7 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output
 from dash.exceptions import PreventUpdate
 
+from io import StringIO
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -22,10 +24,11 @@ from tabs.utils import (
     get_latest_day_of_each_month,
     first_day_same_month,
     get_all_from_api_query,
+    client,
 )
 
 
-def slugify(s):
+def slugify(s: str) -> str:
     return unidecode(s.lower().replace(" ", "-").replace("'", "-"))
 
 
@@ -49,6 +52,66 @@ for _type in ['Telechargement', 'API']:
     )
     dfs.append(tmp)
 df_ouverture = pd.concat(dfs)[['URL', 'Ensemble_de_donnees', 'Thematique']]
+
+
+def create_quality_score_graph():
+    score_history = [
+        name
+        for obj in client.list_objects(
+            "data-pipeline-open", prefix="hvd/", recursive=False
+        )
+        if (name := obj.object_name).endswith("grist_hvd.csv")
+    ]
+    stats = {
+        "date": [],
+        "mean": [],
+        "count": [],
+    }
+    for file in score_history:
+        df = pd.read_csv(
+            StringIO(get_file_content(
+                file,
+                bucket="data-pipeline-open",
+                folder="",
+            )),
+            sep=";",
+            dtype=float,
+            usecols=["score_qualite_hvd"],
+        )
+        stats["date"].append(file.split("/")[-1][:7] + "-01")
+        stats["mean"].append(round(df["score_qualite_hvd"].mean(), 2))
+        stats["count"].append(len(df))
+        del df
+    df = pd.DataFrame(stats)
+    fig = px.bar(df, x="date", y="mean", text_auto=True)
+    fig.add_trace(go.Scatter(
+        x=[d for d in df["date"].values],
+        y=[c for c in df["count"].values],
+        mode='lines',
+        name="Nombre de JdD HVD",
+        yaxis='y2'
+    ))
+    fig.update_layout(
+        xaxis=dict(
+            title='Mois',
+            tickformat="%b 20%y",
+        ),
+        yaxis_title="Score qualité HVD par mois",
+        yaxis_range=[0, 1],
+        yaxis2=dict(
+            title="Nombre de JdD HVD",
+            overlaying='y',
+            side='right',
+            range=[0, max([c for c in df["count"].values]) * 1.1]
+        ),
+        legend=dict(
+            orientation='h',
+            y=1.1,
+            x=0
+        )
+    )
+    return fig
+
 
 tab_hvd = dcc.Tab(label="HVD", children=[
     html.H5('Qualité des HVD'),
@@ -80,6 +143,7 @@ tab_hvd = dcc.Tab(label="HVD", children=[
         style={"padding": "15px 0px 5px 0px"},
     ),
     dcc.Graph(id='hvd:datasets_types'),
+    dcc.Graph(id='hvd:quality_scores', figure=create_quality_score_graph()),
     dbc.Row(id='hvd:objects_to_improve'),
     html.H5('Types et formats des ressources HVD'),
     dbc.Row([
