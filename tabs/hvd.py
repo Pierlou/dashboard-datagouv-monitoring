@@ -177,9 +177,7 @@ tab_hvd = dcc.Tab(
 
 # %% Callbacks
 @dash.callback(
-    [
-        Output("hvd:quality_scores", "figure"),
-    ],
+    Output("hvd:quality_scores", "figure"),
     # this is only to make the graph load with the page
     [Input("hvd:slider", "value")],
 )
