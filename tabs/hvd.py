@@ -155,7 +155,7 @@ tab_hvd = dcc.Tab(
             style={"padding": "15px 0px 5px 0px"},
         ),
         dcc.Graph(id="hvd:datasets_types"),
-        dcc.Graph(id="hvd:quality_scores", figure=create_quality_score_graph()),
+        dcc.Graph(id="hvd:quality_scores"),
         dbc.Row(id="hvd:objects_to_improve"),
         html.H5("Types et formats des ressources HVD"),
         dbc.Row(
@@ -176,6 +176,15 @@ tab_hvd = dcc.Tab(
 
 
 # %% Callbacks
+@dash.callback(
+    [
+        Output("hvd:quality_scores", "figure"),
+    ],
+    # this is only to make the graph load with the page
+    [Input("hvd:slider", "value")],
+)
+def update_quality_graph(_):
+    return create_quality_score_graph()
 
 
 @dash.callback(
